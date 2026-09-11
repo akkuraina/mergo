@@ -28,16 +28,27 @@ export type DeleteOp = {
 
 export type RGAOp = InsertOp | DeleteOp;
 
-function isSameId(a: NodeID | null, b: NodeID | null): boolean {
-  if (a === null || b === null) return a === b;
-  return a.clock === b.clock && a.site === b.site;
+function idGreaterThan(a: NodeID, b: NodeID): boolean {
+  if (a.clock !== b.clock) return a.clock > b.clock;
+  return a.site > b.site;
 }
 
-function isGreater(a: NodeID, b: NodeID): boolean {
-  if (a.clock !== b.clock) {
-    return a.clock > b.clock;
+function getNodeAtVisibleIndex(nodes: RGANode[], index: number): RGANode {
+  // index -1 means "insert after sentinel"
+  if (index === -1) {
+    return nodes[0]; // sentinel is always first
   }
-  return a.site > b.site;
+  let count = -1;
+  for (const node of nodes) {
+    if (node.char === "") continue; // skip sentinel
+    if (!node.deleted) {
+      count++;
+      if (count === index) return node;
+    }
+  }
+  throw new Error(
+    `Visible index ${index} out of bounds (visible length: ${count + 1})`
+  );
 }
 
 export function createDocument(site: string): RGADocument {
@@ -60,38 +71,29 @@ export function localInsert(
   index: number,
   char: string
 ): [RGADocument, InsertOp] {
-  let prevNode: RGANode = doc.nodes[0]; // sentinel for index 0
-
-  if (index > 0) {
-    let visibleCount = 0;
-    let found = false;
-    for (let i = 1; i < doc.nodes.length; i++) {
-      const node = doc.nodes[i];
-      if (!node.deleted) {
-        if (visibleCount === index - 1) {
-          prevNode = node;
-          found = true;
-          break;
-        }
-        visibleCount++;
-      }
-    }
-    if (!found) {
-      prevNode = doc.nodes[doc.nodes.length - 1];
-    }
+  let prevNode: RGANode;
+  try {
+    prevNode = getNodeAtVisibleIndex(doc.nodes, index - 1);
+  } catch {
+    prevNode = doc.nodes[doc.nodes.length - 1] ?? doc.nodes[0];
   }
 
-  const prevIndex = doc.nodes.findIndex((n) => isSameId(n.id, prevNode.id));
+  const prevIndex = doc.nodes.findIndex(
+    (n) => n.id.clock === prevNode.id.clock && n.id.site === prevNode.id.site
+  );
+
+  const resolvedPrevIndex = prevIndex === -1 ? 0 : prevIndex;
+  const actualPrevNode = doc.nodes[resolvedPrevIndex];
 
   const newNode: RGANode = {
     id: { clock: doc.clock, site: doc.site },
     char,
     deleted: false,
-    prev: prevNode.id,
+    prev: actualPrevNode.id,
   };
 
   const newNodes = [...doc.nodes];
-  newNodes.splice(prevIndex + 1, 0, newNode);
+  newNodes.splice(resolvedPrevIndex + 1, 0, newNode);
 
   const updatedDoc: RGADocument = {
     ...doc,
@@ -111,27 +113,24 @@ export function localDelete(
   doc: RGADocument,
   index: number
 ): [RGADocument, DeleteOp] {
-  let targetIndex = -1;
-  let visibleCount = 0;
-
-  for (let i = 1; i < doc.nodes.length; i++) {
-    const node = doc.nodes[i];
-    if (!node.deleted) {
-      if (visibleCount === index) {
-        targetIndex = i;
-        break;
-      }
-      visibleCount++;
-    }
+  let targetNode: RGANode | null = null;
+  try {
+    targetNode = getNodeAtVisibleIndex(doc.nodes, index);
+  } catch {
+    targetNode = null;
   }
 
-  if (targetIndex === -1) {
-    throw new Error(`Visible index ${index} out of bounds`);
+  if (!targetNode) {
+    return [
+      doc,
+      { type: "delete", targetId: { clock: -1, site: "" } },
+    ];
   }
 
-  const targetNode = doc.nodes[targetIndex];
-  const newNodes = doc.nodes.map((n, i) =>
-    i === targetIndex ? { ...n, deleted: true } : n
+  const newNodes = doc.nodes.map((n) =>
+    n.id.clock === targetNode?.id.clock && n.id.site === targetNode?.id.site
+      ? { ...n, deleted: true }
+      : n
   );
 
   const updatedDoc: RGADocument = {
@@ -148,34 +147,61 @@ export function localDelete(
 }
 
 export function applyOp(doc: RGADocument, op: RGAOp): RGADocument {
+  if (!op || !op.type) return doc;
+
   if (op.type === "insert") {
-    const exists = doc.nodes.some((n) => isSameId(n.id, op.node.id));
-    if (exists) {
+    if (!op.node || !op.node.id) return doc;
+
+    // 1. idempotency check
+    if (
+      doc.nodes.some(
+        (n) =>
+          n.id.clock === op.node.id.clock && n.id.site === op.node.id.site
+      )
+    ) {
       return doc;
     }
 
-    let prevIndex = -1;
-    if (op.node.prev === null) {
-      prevIndex = 0;
-    } else {
-      prevIndex = doc.nodes.findIndex((n) => isSameId(n.id, op.node.prev));
+    // 2. find predecessor index
+    const predIndex = doc.nodes.findIndex(
+      (n) =>
+        n.id.clock === (op.node.prev?.clock ?? 0) &&
+        n.id.site === (op.node.prev?.site ?? "")
+    );
+    if (predIndex === -1) {
+      throw new Error(
+        `Predecessor not found for op: ${JSON.stringify(op.node.id)}`
+      );
     }
 
-    if (prevIndex === -1) {
-      prevIndex = 0;
+    // 3. scan forward past all nodes that beat the incoming node
+    // Do NOT stop just because a node has a different prev —
+    // concurrent inserts at the same position form a contiguous run
+    // and ALL of them must be compared against the incoming node
+    let insertAt = predIndex + 1;
+    while (insertAt < doc.nodes.length) {
+      const candidate = doc.nodes[insertAt];
+
+      // Stop if this node was inserted AFTER the predecessor's subtree
+      // i.e. its prev is "before" our predecessor in the document
+      const candidatePredIndex = doc.nodes.findIndex(
+        (n) =>
+          n.id.clock === (candidate.prev?.clock ?? 0) &&
+          n.id.site === (candidate.prev?.site ?? "")
+      );
+      if (candidatePredIndex < predIndex) break;
+
+      // Within the concurrent run, skip nodes that beat the incoming node
+      if (idGreaterThan(candidate.id, op.node.id)) {
+        insertAt++;
+      } else {
+        break;
+      }
     }
 
-    let insertIndex = prevIndex + 1;
-    while (
-      insertIndex < doc.nodes.length &&
-      isGreater(doc.nodes[insertIndex].id, op.node.id)
-    ) {
-      insertIndex++;
-    }
-
+    // 4. insert
     const newNodes = [...doc.nodes];
-    newNodes.splice(insertIndex, 0, op.node);
-
+    newNodes.splice(insertAt, 0, op.node);
     return {
       ...doc,
       nodes: newNodes,
@@ -184,8 +210,11 @@ export function applyOp(doc: RGADocument, op: RGAOp): RGADocument {
   }
 
   if (op.type === "delete") {
+    if (!op.targetId) return doc;
     const newNodes = doc.nodes.map((n) =>
-      isSameId(n.id, op.targetId) ? { ...n, deleted: true } : n
+      n.id.clock === op.targetId.clock && n.id.site === op.targetId.site
+        ? { ...n, deleted: true }
+        : n
     );
 
     return {
@@ -199,14 +228,13 @@ export function applyOp(doc: RGADocument, op: RGAOp): RGADocument {
 
 export function getVisibleText(doc: RGADocument): string {
   return doc.nodes
-    .slice(1)
-    .filter((n) => !n.deleted)
+    .filter((n) => n.char !== "" && !n.deleted)
     .map((n) => n.char)
     .join("");
 }
 
 export function getVisibleLength(doc: RGADocument): number {
-  return doc.nodes.slice(1).filter((n) => !n.deleted).length;
+  return doc.nodes.filter((n) => n.char !== "" && !n.deleted).length;
 }
 
 export function serializeOp(op: RGAOp): string {

@@ -7,6 +7,7 @@ import {
   getVisibleLength,
   serializeOp,
   deserializeOp,
+  type RGAOp,
 } from "./rga";
 
 function runTests() {
@@ -45,7 +46,7 @@ function runTests() {
       `Test 2 Failed: Expected length 5, got ${getVisibleLength(doc)}`
     );
 
-    // Insert in the middle: 'H' (idx 0), 'e' (idx 1) -> insert 'y' at index 1 -> "Hye llo"
+    // Insert in the middle: 'H' (idx 0), 'e' (idx 1) -> insert '-' at index 1 -> "H-ello"
     const [docWithMiddle] = localInsert(doc, 1, "-");
     console.assert(
       getVisibleText(docWithMiddle) === "H-ello",
@@ -60,7 +61,6 @@ function runTests() {
     const [d1] = localInsert(doc, 0, "a");
     const [d2] = localInsert(d1, 1, "b");
     const [d3] = localInsert(d2, 2, "c");
-    // Visible: "abc", nodes count: 4 (sentinel + a + b + c)
     console.assert(getVisibleText(d3) === "abc", "Test 3 Setup failed");
     console.assert(d3.nodes.length === 4, "Test 3 Setup node length failed");
 
@@ -126,7 +126,6 @@ function runTests() {
 
   // 6. Delete of a concurrently inserted character
   {
-    // Initial document on both sites with text "H"
     let docA = createDocument("site-A");
     const [docWithH, initOp] = localInsert(docA, 0, "H");
     docA = docWithH;
@@ -140,7 +139,7 @@ function runTests() {
     // Site B deletes 'H' at index 0 -> ""
     const [docB2, deleteOpB] = localDelete(docB, 0);
 
-    // Now exchange ops
+    // Exchange ops
     const finalA = applyOp(docA2, deleteOpB);
     const finalB = applyOp(docB2, insertOpA);
 
@@ -160,7 +159,73 @@ function runTests() {
     );
   }
 
-  // 7. Serialization and Deserialization
+  // 7. Mid-string insert convergence test
+  {
+    let siteA = createDocument("A");
+    let siteB = createDocument("B");
+
+    // Both sites start with "helo"
+    const ops: RGAOp[] = [];
+    "helo".split("").forEach((char, i) => {
+      const [newDoc, op] = localInsert(siteA, i, char);
+      siteA = newDoc;
+      ops.push(op);
+    });
+    ops.forEach((op) => {
+      siteB = applyOp(siteB, op);
+    });
+
+    // A inserts 'l' at index 3, B inserts '!' at index 4 concurrently
+    let docA = siteA;
+    let docB = siteB;
+    const [docA2, opA] = localInsert(docA, 3, "l");
+    const [docB2, opB] = localInsert(docB, 4, "!");
+
+    // Cross-apply
+    const docA_final = applyOp(docA2, opB);
+    const docB_final = applyOp(docB2, opA);
+
+    const textA = getVisibleText(docA_final);
+    const textB = getVisibleText(docB_final);
+
+    console.assert(
+      textA === textB,
+      `Test 7 Failed: Convergence failed: A="${textA}" B="${textB}"`
+    );
+    console.log(
+      `✓ Test 7 Passed: Mid-string insert converged to "${textA}" on both sites`
+    );
+  }
+
+  // 8. Concurrent insert order test (seeded document with concurrent inserts at position 0)
+  {
+    let docA = createDocument("A");
+    let docB = createDocument("B");
+
+    // seed both with 'x'
+    let opSeed: RGAOp;
+    [docA, opSeed] = localInsert(docA, 0, "x");
+    docB = applyOp(docB, opSeed);
+
+    // concurrent: A inserts 'A' at 0, B inserts 'B' at 0
+    const [docA2, opA] = localInsert(docA, 0, "A");
+    const [docB2, opB] = localInsert(docB, 0, "B");
+
+    // cross apply
+    const docA_final = applyOp(docA2, opB);
+    const docB_final = applyOp(docB2, opA);
+
+    const textA = getVisibleText(docA_final);
+    const textB = getVisibleText(docB_final);
+
+    console.assert(
+      textA === textB,
+      `Ordering diverged: A="${textA}" B="${textB}"`
+    );
+    console.log("✓ Test 8 Passed: Concurrent insert order test passed:", textA);
+  }
+
+  // 9. Serialization and Deserialization
   {
     const doc = createDocument("site-1");
     const [, insertOp] = localInsert(doc, 0, "k");
@@ -180,7 +245,7 @@ function runTests() {
         parsedDelete.targetId.clock === deleteOp.targetId.clock,
       "Serialization test failed for delete"
     );
-    console.log("✓ Test 7 Passed: Op serialization and deserialization");
+    console.log("✓ Test 9 Passed: Op serialization and deserialization");
   }
 
   console.log("All RGA CRDT tests passed successfully!");

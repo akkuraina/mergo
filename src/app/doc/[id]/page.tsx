@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import CollabBar from "@/components/CollabBar";
 import Editor from "@/components/Editor";
 import type { Document, Operation } from "@/lib/types";
 
@@ -62,17 +61,12 @@ export default async function DocPage({
         </div>
       </header>
 
-      {/* Collaboration Bar */}
-      <CollabBar docId={document.id} />
-
-      {/* Document Workspace Area */}
-      <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col px-8 py-8">
-        <Editor
-          document={document}
-          initialOps={initialOps}
-          initialTitle={document.title}
-        />
-      </main>
+      {/* Editor with integrated CollabBar and real-time remote cursors */}
+      <Editor
+        document={document}
+        initialOps={initialOps}
+        initialTitle={document.title}
+      />
     </div>
   );
 }

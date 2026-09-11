@@ -1,69 +1,20 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { useState } from "react";
+import Image from "next/image";
+import { type PresenceUser, getUserInitials } from "@/lib/editor/collab";
 
 interface CollabBarProps {
-  docId: string;
-  siteId?: string;
+  presenceUsers: PresenceUser[];
+  currentSiteId?: string;
 }
 
-export default function CollabBar({ docId, siteId: propSiteId }: CollabBarProps) {
+export default function CollabBar({
+  presenceUsers,
+  currentSiteId,
+}: CollabBarProps) {
   const [copied, setCopied] = useState(false);
-  const [presenceCount, setPresenceCount] = useState(1);
-  const localSiteIdRef = useRef<string>(propSiteId || "");
-
-  useEffect(() => {
-    if (!localSiteIdRef.current) {
-      localSiteIdRef.current = crypto.randomUUID();
-    }
-    const currentSiteId = localSiteIdRef.current;
-
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-    if (!supabaseUrl || !supabaseAnonKey) {
-      return;
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseAnonKey);
-    const channel = supabase.channel(`presence:${docId}`, {
-      config: {
-        presence: {
-          key: currentSiteId,
-        },
-      },
-    });
-
-    channel
-      .on("presence", { event: "sync" }, () => {
-        const state = channel.presenceState();
-        const activeUsersCount = Object.keys(state).length;
-        setPresenceCount(Math.max(1, activeUsersCount));
-      })
-      .on("presence", { event: "join" }, () => {
-        const state = channel.presenceState();
-        const activeUsersCount = Object.keys(state).length;
-        setPresenceCount(Math.max(1, activeUsersCount));
-      })
-      .on("presence", { event: "leave" }, () => {
-        const state = channel.presenceState();
-        const activeUsersCount = Object.keys(state).length;
-        setPresenceCount(Math.max(1, activeUsersCount));
-      })
-      .subscribe(async (status) => {
-        if (status === "SUBSCRIBED") {
-          await channel.track({
-            siteId: currentSiteId,
-            onlineAt: new Date().toISOString(),
-          });
-        }
-      });
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [docId]);
+  const [hoveredSiteId, setHoveredSiteId] = useState<string | null>(null);
 
   async function handleCopy() {
     try {
@@ -71,35 +22,108 @@ export default function CollabBar({ docId, siteId: propSiteId }: CollabBarProps)
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Fallback if clipboard API fails
+      // Fallback
     }
   }
 
-  return (
-    <div className="flex items-center justify-between border-b border-[#1a1a1a] bg-[#0d0d0d] px-6 py-2.5">
-      <div className="flex items-center space-x-6">
-        <div className="flex items-center space-x-2 text-xs text-[#aaaaaa]">
-          <span className="font-medium text-[#eeeeee]">Doc:</span>
-          <span className="font-mono text-[#aaaaaa] select-all">{docId}</span>
-        </div>
+  const MAX_VISIBLE_AVATARS = 5;
+  const visibleUsers = presenceUsers.slice(0, MAX_VISIBLE_AVATARS);
+  const overflowCount = Math.max(0, presenceUsers.length - MAX_VISIBLE_AVATARS);
 
-        {/* Presence Indicator */}
-        <div className="flex items-center space-x-2 border-l border-[#1a1a1a] pl-6 text-xs text-[#aaaaaa]">
-          <div className="flex items-center space-x-1.5">
-            {Array.from({ length: presenceCount }).map((_, i) => (
-              <span
-                key={i}
-                className="inline-block h-2 w-2 rounded-full bg-[#1fb622]"
-                title={`Participant ${i + 1}`}
-              />
-            ))}
-          </div>
-          <span>
-            {presenceCount} {presenceCount === 1 ? "editor" : "editors"} online
-          </span>
+  return (
+    <div className="flex h-11 items-center justify-between border-b border-[#1a1a1a] bg-[#0d0d0d] px-6">
+      {/* Left: Active Collaborator Avatars */}
+      <div className="flex items-center space-x-3">
+        <div className="flex items-center -space-x-2">
+          {visibleUsers.map((user) => {
+            const isCurrent = user.siteId === currentSiteId;
+            const initials = getUserInitials(user.name, user.email);
+            const isHovered = hoveredSiteId === user.siteId;
+
+            return (
+              <div
+                key={user.siteId}
+                className="relative group cursor-pointer"
+                onMouseEnter={() => setHoveredSiteId(user.siteId)}
+                onMouseLeave={() => setHoveredSiteId(null)}
+              >
+                {/* Avatar Circle */}
+                <div
+                  style={{
+                    borderColor: user.color || "#1fb622",
+                  }}
+                  className={`relative flex h-7 w-7 items-center justify-center rounded-full border-2 bg-[#141414] text-xs font-semibold text-[#eeeeee] transition-all duration-200 ${
+                    user.isTyping
+                      ? "ring-2 ring-[#1fb622] ring-offset-2 ring-offset-[#0d0d0d] animate-pulse"
+                      : "hover:z-30 hover:scale-105"
+                  }`}
+                >
+                  {user.imageUrl ? (
+                    <Image
+                      src={user.imageUrl}
+                      alt={user.name || "User avatar"}
+                      width={28}
+                      height={28}
+                      className="h-full w-full rounded-full object-cover"
+                      unoptimized
+                    />
+                  ) : (
+                    <span className="select-none text-[11px] font-medium tracking-tight">
+                      {initials}
+                    </span>
+                  )}
+
+                  {/* Active Typing Indicator Badge */}
+                  {user.isTyping && (
+                    <span
+                      className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-[#1fb622] ring-1 ring-[#0d0d0d]"
+                      title="Typing..."
+                    />
+                  )}
+                </div>
+
+                {/* Hover Tooltip (Full Name + Email) */}
+                {isHovered && (
+                  <div className="absolute left-1/2 top-9 z-50 -translate-x-1/2 rounded-lg border border-[#1a1a1a] bg-[#141414] px-3 py-2 text-left shadow-xl whitespace-nowrap pointer-events-none animate-in fade-in duration-150">
+                    <div className="flex items-center space-x-1.5">
+                      <p className="text-xs font-semibold text-[#eeeeee]">
+                        {user.name || "Anonymous Collaborator"}
+                      </p>
+                      {isCurrent && (
+                        <span className="rounded bg-[#1a1a1a] px-1 py-0.2 text-[9px] font-medium text-[#aaaaaa]">
+                          You
+                        </span>
+                      )}
+                    </div>
+                    {user.email && (
+                      <p className="text-[11px] text-[#aaaaaa] mt-0.5">
+                        {user.email}
+                      </p>
+                    )}
+                    {user.isTyping && (
+                      <p className="text-[10px] text-[#1fb622] font-medium mt-1">
+                        Typing right now...
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Overflow Avatar Badge (+N) */}
+          {overflowCount > 0 && (
+            <div
+              className="relative flex h-7 w-7 items-center justify-center rounded-full border-2 border-[#1a1a1a] bg-[#1c1c1c] text-[10px] font-medium text-[#aaaaaa]"
+              title={`${overflowCount} more collaborators online`}
+            >
+              +{overflowCount}
+            </div>
+          )}
         </div>
       </div>
 
+      {/* Right: Copy Share Link Button */}
       <button
         onClick={handleCopy}
         className={`inline-flex items-center rounded-lg border border-[#1a1a1a] px-3 py-1.5 text-xs font-medium transition-colors ${
