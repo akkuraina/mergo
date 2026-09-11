@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import {
   createDocument,
@@ -26,16 +26,12 @@ export default function Editor({
   initialTitle,
 }: EditorProps) {
   const siteIdRef = useRef<string>("");
-  const docRef = useRef<RGADocument | null>(null);
-  const currentTitleRef = useRef<string>(
-    initialTitle ?? document.title ?? "Untitled"
-  );
-  const [text, setText] = useState<string>("");
-  const [, startTransition] = useTransition();
-
-  // Initialize siteId and local RGA document once
   if (!siteIdRef.current) {
     siteIdRef.current = crypto.randomUUID();
+  }
+
+  const docRef = useRef<RGADocument | null>(null);
+  if (!docRef.current) {
     let rgaDoc = createDocument(siteIdRef.current);
 
     // Replay initial operations
@@ -43,7 +39,7 @@ export default function Editor({
       const op: RGAOp =
         typeof rawOp.payload === "string"
           ? deserializeOp(rawOp.payload)
-          : (rawOp.payload as RGAOp);
+          : deserializeOp(JSON.stringify(rawOp.payload));
 
       if (op && op.type) {
         rgaDoc = applyOp(rgaDoc, op);
@@ -53,15 +49,16 @@ export default function Editor({
     docRef.current = rgaDoc;
   }
 
-  // Set initial text state
-  useEffect(() => {
-    if (docRef.current) {
-      setText(getVisibleText(docRef.current));
-    }
-  }, []);
+  const currentTitleRef = useRef<string>(
+    initialTitle ?? document.title ?? "Untitled"
+  );
+  const [text, setText] = useState<string>(() =>
+    getVisibleText(docRef.current!)
+  );
 
   // Supabase Realtime subscription for incoming operations
   useEffect(() => {
+    const docId = document.id;
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -69,16 +66,17 @@ export default function Editor({
       return;
     }
 
+    // Requires: Supabase Dashboard → Database → Replication → supabase_realtime → operations table enabled
     const supabase = createClient(supabaseUrl, supabaseAnonKey);
     const channel = supabase
-      .channel(`doc_ops:${document.id}`)
+      .channel(`doc-${docId}`)
       .on(
         "postgres_changes",
         {
           event: "INSERT",
           schema: "public",
           table: "operations",
-          filter: `doc_id=eq.${document.id}`,
+          filter: `doc_id=eq.${docId}`,
         },
         (payload) => {
           const newRow = payload.new as {
@@ -88,22 +86,25 @@ export default function Editor({
 
           if (!newRow || !newRow.payload) return;
 
-          const op: RGAOp =
+          // skip ops that originated from this site — already applied locally
+          if (newRow.site_id === siteIdRef.current) return;
+
+          const incoming: RGAOp =
             typeof newRow.payload === "string"
               ? deserializeOp(newRow.payload)
-              : (newRow.payload as RGAOp);
+              : deserializeOp(JSON.stringify(newRow.payload));
 
-          if (!op || !op.type || !docRef.current) return;
+          console.log("Remote op received:", incoming);
 
-          // Apply remote operation idempotently
-          docRef.current = applyOp(docRef.current, op);
-          const nextText = getVisibleText(docRef.current);
-          startTransition(() => {
-            setText(nextText);
-          });
+          if (docRef.current) {
+            docRef.current = applyOp(docRef.current, incoming);
+            setText(getVisibleText(docRef.current));
+          }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log("Realtime status:", status);
+      });
 
     return () => {
       supabase.removeChannel(channel);
