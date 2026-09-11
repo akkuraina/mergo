@@ -20,12 +20,16 @@ export default function NewDocButton({ className = "" }: NewDocButtonProps) {
       });
 
       if (!res.ok) {
-        throw new Error("Failed to create document");
+        const errorData = await res.json().catch(() => ({}));
+        console.error("Error creating document:", errorData);
+        setLoading(false);
+        return;
       }
 
       const data: { id: string; title: string } = await res.json();
       router.push(`/doc/${data.id}`);
-    } catch {
+    } catch (err) {
+      console.error("Failed to create document:", err);
       setLoading(false);
     }
   }

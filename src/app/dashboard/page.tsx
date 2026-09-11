@@ -20,6 +20,10 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
     .eq("created_by", user.id)
     .order("created_at", { ascending: false });
 
+  if (error) {
+    console.error("Supabase fetch documents error:", error);
+  }
+
   const docList: Document[] = error || !documents ? [] : (documents as Document[]);
 
   return (

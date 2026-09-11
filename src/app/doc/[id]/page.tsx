@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import CollabBar from "@/components/CollabBar";
-import type { Document } from "@/lib/types";
+import Editor from "@/components/Editor";
+import type { Document, Operation } from "@/lib/types";
 
 interface DocPageProps {
   params: Promise<{ id: string }>;
@@ -18,17 +19,32 @@ export default async function DocPage({
   }
 
   const supabase = createServerSupabaseClient();
-  const { data: doc, error } = await supabase
+
+  // Fetch document
+  const { data: doc, error: docError } = await supabase
     .from("documents")
     .select("*")
     .eq("id", id)
     .single();
 
-  if (error || !doc) {
+  if (docError || !doc) {
+    console.error("Supabase fetch document error:", docError);
     notFound();
   }
 
+  // Fetch operations ordered by clock ASC
+  const { data: ops, error: opsError } = await supabase
+    .from("operations")
+    .select("*")
+    .eq("doc_id", id)
+    .order("clock", { ascending: true });
+
+  if (opsError) {
+    console.error("Supabase fetch operations error:", opsError);
+  }
+
   const document = doc as Document;
+  const initialOps = opsError || !ops ? [] : (ops as Operation[]);
 
   return (
     <div className="flex min-h-screen flex-col bg-[#060606] text-[#eeeeee]">
@@ -50,18 +66,12 @@ export default async function DocPage({
       <CollabBar docId={document.id} />
 
       {/* Document Workspace Area */}
-      <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col px-8 py-10">
-        <input
-          type="text"
-          defaultValue={document.title || "Untitled"}
-          placeholder="Untitled"
-          aria-label="Document title"
-          className="w-full border-none bg-transparent text-3xl font-bold tracking-tight text-[#eeeeee] outline-none placeholder:text-[#aaaaaa]"
+      <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col px-8 py-8">
+        <Editor
+          document={document}
+          initialOps={initialOps}
+          initialTitle={document.title}
         />
-
-        <div className="mt-10 flex flex-1 items-start justify-center rounded-lg border border-[#1a1a1a] bg-[#0d0d0d] p-12 text-sm text-[#aaaaaa]">
-          Editor initialises here — Phase 2
-        </div>
       </main>
     </div>
   );

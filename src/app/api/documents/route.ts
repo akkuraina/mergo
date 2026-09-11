@@ -1,12 +1,12 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { getAuth } from "@clerk/nextjs/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+export async function POST(request: NextRequest): Promise<Response> {
   const { userId } = getAuth(request);
 
   if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const supabase = createServerSupabaseClient();
@@ -20,13 +20,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .single();
 
   if (error || !data) {
-    return NextResponse.json(
+    console.error("Supabase insert document error:", error);
+    return Response.json(
       { error: error?.message ?? "Failed to create document" },
       { status: 500 }
     );
   }
 
-  return NextResponse.json(
+  return Response.json(
     { id: data.id, title: data.title },
     { status: 201 }
   );
