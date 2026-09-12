@@ -6,8 +6,10 @@ import CollabBar from "@/components/CollabBar";
 import EditorToolbar from "@/components/EditorToolbar";
 import Editor from "@/components/Editor";
 import EditorFooter from "@/components/EditorFooter";
+import VersionHistory from "@/components/VersionHistory";
 import type { Operation } from "@/lib/types";
 import type { PresenceUser } from "@/lib/editor/collab";
+import type { VersionRow } from "@/types/mergo";
 
 interface DocClientProps {
   docId: string;
@@ -36,13 +38,67 @@ export default function DocClient({
   });
   const [editor, setEditor] = useState<TiptapEditor | null>(null);
 
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [previewMode, setPreviewMode] = useState(false);
+  const [previewVersion, setPreviewVersion] = useState<VersionRow | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  const handleRestore = async (versionId: string) => {
+    try {
+      const res = await fetch(
+        `/api/documents/${docId}/versions/${versionId}/restore`,
+        {
+          method: "POST",
+        }
+      );
+      if (res.ok) {
+        setPreviewMode(false);
+        setPreviewVersion(null);
+        setHistoryOpen(false);
+        const labelOrDate =
+          previewVersion?.label ||
+          (previewVersion
+            ? new Date(previewVersion.created_at).toLocaleString(undefined, {
+                month: "short",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+              })
+            : "selected version");
+        showToast(`Document restored to ${labelOrDate}`);
+        // Reload to fetch full new operation log and initialize CRDT cleanly
+        setTimeout(() => {
+          window.location.reload();
+        }, 600);
+      } else {
+        showToast("Failed to restore document");
+      }
+    } catch (err) {
+      console.error("Error restoring version:", err);
+      showToast("Failed to restore document");
+    }
+  };
+
   return (
     <div className="relative min-h-screen bg-[#060606] text-[#eeeeee]">
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-12 left-1/2 z-50 -translate-x-1/2 rounded-md bg-[#1fb622] px-4 py-2 text-xs font-semibold text-[#060606] shadow-lg animate-fade-in">
+          {toastMessage}
+        </div>
+      )}
+
       {/* Top Fixed CollabBar (48px) */}
       <CollabBar
         docId={docId}
         initialTitle={initialTitle}
         presenceUsers={presenceUsers}
+        onHistoryOpen={() => setHistoryOpen(true)}
       />
 
       {/* Fixed Editor Toolbar (44px, positioned directly below CollabBar) */}
@@ -62,6 +118,28 @@ export default function DocClient({
         onStatsChange={setStats}
         zoom={zoom}
         onEditorReady={setEditor}
+        previewMode={previewMode}
+        previewVersion={previewVersion}
+        onExitPreview={() => {
+          setPreviewMode(false);
+          setPreviewVersion(null);
+        }}
+        onRestoreVersion={handleRestore}
+        historyOpen={historyOpen}
+      />
+
+      {/* Right Sidebar Version History Panel */}
+      <VersionHistory
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        docId={docId}
+        selectedVersionId={previewVersion?.id || null}
+        onPreview={(v) => {
+          setPreviewVersion(v);
+          setPreviewMode(true);
+        }}
+        onRestore={handleRestore}
+        currentUserId={userId}
       />
 
       {/* Bottom Fixed Sticky Footer (36px) */}
@@ -76,3 +154,4 @@ export default function DocClient({
     </div>
   );
 }
+

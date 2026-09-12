@@ -21,6 +21,7 @@ import {
 } from "@/lib/crdt/rga";
 import type { Operation } from "@/lib/types";
 import type { PresenceUser } from "@/lib/editor/collab";
+import type { VersionRow } from "@/types/mergo";
 
 export interface EditorProps {
   docId: string;
@@ -38,6 +39,11 @@ export interface EditorProps {
   }) => void;
   zoom: number;
   onEditorReady?: (editor: TiptapEditor | null) => void;
+  previewMode?: boolean;
+  previewVersion?: VersionRow | null;
+  onExitPreview?: () => void;
+  onRestoreVersion?: (versionId: string) => Promise<void>;
+  historyOpen?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -100,12 +106,22 @@ export default function Editor({
   onStatsChange,
   zoom,
   onEditorReady,
+  previewMode = false,
+  previewVersion = null,
+  onExitPreview,
+  onRestoreVersion,
+  historyOpen = false,
 }: EditorProps) {
   // Generate siteId once at component creation time — never regenerate.
   const siteIdRef = useRef<string>(crypto.randomUUID());
 
   // RGA document — initialised once, then mutated through the ref.
   const docRef = useRef<RGADocument>(createDocument(siteIdRef.current));
+
+  const previewModeRef = useRef<boolean>(previewMode);
+  previewModeRef.current = previewMode;
+
+  const opCountRef = useRef<number>(0);
 
   // Replay persisted ops exactly once on mount.
   //
@@ -213,21 +229,32 @@ export default function Editor({
   const pendingOpsRef = useRef<RGAOp[]>([]);
 
   // ---------------------------------------------------------------------------
-  // Persist a single op to Supabase
+  // Persist a single op to Supabase (with auto-versioning every 50 ops)
   // ---------------------------------------------------------------------------
   const persistOp = async (op: RGAOp): Promise<void> => {
+    if (previewModeRef.current) return;
     try {
       await fetch(`/api/documents/${docId}/ops`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ op, siteId: siteIdRef.current }),
       });
+
+      opCountRef.current++;
+      if (opCountRef.current % 50 === 0) {
+        fetch(`/api/documents/${docId}/versions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ label: null }),
+        }).catch((err) => console.error("Auto-version save failed:", err));
+      }
     } catch (err) {
       console.error("Failed to persist operation:", err);
     }
   };
 
   const debouncedSaveSnapshot = (json: Record<string, unknown>) => {
+    if (previewModeRef.current) return;
     if (snapshotTimeoutRef.current) {
       clearTimeout(snapshotTimeoutRef.current);
     }
@@ -255,6 +282,7 @@ export default function Editor({
   // ---------------------------------------------------------------------------
   const editor = useEditor({
     immediatelyRender: false,
+    editable: !previewMode,
     extensions: [
       StarterKit,
       Underline,
@@ -271,8 +299,8 @@ export default function Editor({
       },
     },
     onUpdate: ({ editor: tiptapEditor }) => {
-      // Guard: don't process remote-triggered updates
-      if (isRemoteUpdateRef.current) return;
+      // Guard: don't process remote-triggered updates or preview edits
+      if (isRemoteUpdateRef.current || previewModeRef.current) return;
 
       const json = tiptapEditor.getJSON() as Record<string, unknown>;
 
@@ -344,6 +372,34 @@ export default function Editor({
   }, [editor, onEditorReady]);
 
   // ---------------------------------------------------------------------------
+  // Handle preview mode transitions
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const currentEditor = editorRef.current;
+    if (!currentEditor) return;
+
+    if (previewMode && previewVersion) {
+      currentEditor.setEditable(false);
+      isRemoteUpdateRef.current = true;
+      currentEditor.commands.setContent(previewVersion.snapshot_text, {
+        emitUpdate: false,
+      });
+      isRemoteUpdateRef.current = false;
+      setText(previewVersion.snapshot_text);
+    } else {
+      currentEditor.setEditable(true);
+      const currentDocText = getVisibleText(docRef.current);
+      isRemoteUpdateRef.current = true;
+      currentEditor.commands.setContent(
+        initialRichContentRef.current || (currentDocText.length > 0 ? currentDocText : ""),
+        { emitUpdate: false }
+      );
+      isRemoteUpdateRef.current = false;
+      setText(currentDocText);
+    }
+  }, [previewMode, previewVersion]);
+
+  // ---------------------------------------------------------------------------
   // Supabase Realtime — ops + presence + broadcast
   // ---------------------------------------------------------------------------
   useEffect(() => {
@@ -407,6 +463,7 @@ export default function Editor({
      * Push the current CRDT state into Tiptap and React state if needed.
      */
     function flushToEditor(): void {
+      if (previewModeRef.current) return;
       const newText = getVisibleText(docRef.current);
       const currentEditor = editorRef.current;
       if (currentEditor) {
@@ -425,6 +482,7 @@ export default function Editor({
         "broadcast",
         { event: "doc_rich_update" },
         ({ payload }) => {
+          if (previewModeRef.current) return;
           if (!payload || payload.siteId === siteIdRef.current || !payload.json) return;
           const currentEditor = editorRef.current;
           if (!currentEditor) return;
@@ -466,6 +524,8 @@ export default function Editor({
           filter: `doc_id=eq.${docId}`,
         },
         (payload) => {
+          if (previewModeRef.current) return;
+
           const newRow = payload.new as {
             payload: RGAOp | Record<string, unknown> | string;
             site_id: string;
@@ -557,14 +617,14 @@ export default function Editor({
       Math.max(1, Math.floor(scrollTop / 1056) + 1)
     );
 
-    const visibleText = getVisibleText(docRef.current);
+    const visibleText = previewMode && previewVersion ? previewVersion.snapshot_text : getVisibleText(docRef.current);
     const words = visibleText.trim()
       ? visibleText.trim().split(/\s+/).filter(Boolean).length
       : 0;
     const chars = visibleText.length;
 
     onStatsChange({ words, chars, pages: pageCount, currentPage: curPage });
-  }, [text, onStatsChange]);
+  }, [text, onStatsChange, previewMode, previewVersion]);
 
   // ---------------------------------------------------------------------------
   // Scroll listener for real-time current page detection
@@ -583,7 +643,7 @@ export default function Editor({
         Math.max(1, Math.floor(scrollTop / 1056) + 1)
       );
 
-      const visibleText = getVisibleText(docRef.current);
+      const visibleText = previewMode && previewVersion ? previewVersion.snapshot_text : getVisibleText(docRef.current);
       const words = visibleText.trim()
         ? visibleText.trim().split(/\s+/).filter(Boolean).length
         : 0;
@@ -594,30 +654,75 @@ export default function Editor({
 
     wrapper.addEventListener("scroll", handleScroll, { passive: true });
     return () => wrapper.removeEventListener("scroll", handleScroll);
-  }, [onStatsChange]);
+  }, [onStatsChange, previewMode, previewVersion]);
 
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
   return (
-    <div ref={scrollWrapperRef} className="editor-scroll-wrapper">
+    <>
+      {/* Preview Mode Banner */}
+      {previewMode && previewVersion && (
+        <div className="fixed top-[92px] left-0 right-0 z-30 flex h-11 items-center justify-between border-b border-[#1fb622] bg-[#1a1a1a] px-6 text-[13px] font-sans text-[#eeeeee]">
+          <div>
+            Viewing version from{" "}
+            <span className="font-medium">
+              {new Date(previewVersion.created_at).toLocaleDateString(undefined, {
+                month: "short",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+              })}
+            </span>{" "}
+            by <span className="font-medium">{previewVersion.created_by_name}</span>
+            {previewVersion.label ? ` ("${previewVersion.label}")` : ""}
+          </div>
+          <div className="flex items-center space-x-4">
+            <button
+              type="button"
+              onClick={() => onRestoreVersion?.(previewVersion.id)}
+              className="text-[#1fb622] hover:underline font-medium cursor-pointer"
+            >
+              Restore this version
+            </button>
+            <button
+              type="button"
+              onClick={onExitPreview}
+              className="text-[#aaaaaa] hover:text-white cursor-pointer"
+            >
+              Back to current version
+            </button>
+          </div>
+        </div>
+      )}
+
       <div
-        ref={pageContainerRef}
-        className="page-container"
+        ref={scrollWrapperRef}
+        className="editor-scroll-wrapper"
         style={{
-          transform: `scale(${zoom / 100})`,
-          transformOrigin: "top center",
+          top: previewMode ? "136px" : "92px",
+          right: historyOpen ? "320px" : "0",
+          transition: "right 200ms ease, top 150ms ease",
         }}
       >
-        {pageBreaks.map((topPos) => (
-          <div
-            key={topPos}
-            className="page-break-line"
-            style={{ top: `${topPos}px` }}
-          />
-        ))}
-        <EditorContent editor={editor} />
+        <div
+          ref={pageContainerRef}
+          className="page-container"
+          style={{
+            transform: `scale(${zoom / 100})`,
+            transformOrigin: "top center",
+          }}
+        >
+          {pageBreaks.map((topPos) => (
+            <div
+              key={topPos}
+              className="page-break-line"
+              style={{ top: `${topPos}px` }}
+            />
+          ))}
+          <EditorContent editor={editor} />
+        </div>
       </div>
-    </div>
+    </>
   );
 }

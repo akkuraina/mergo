@@ -9,12 +9,14 @@ interface CollabBarProps {
   docId: string;
   initialTitle: string;
   presenceUsers: PresenceUser[];
+  onHistoryOpen?: () => void;
 }
 
 export default function CollabBar({
   docId,
   initialTitle,
   presenceUsers,
+  onHistoryOpen,
 }: CollabBarProps) {
   const [copied, setCopied] = useState(false);
   const currentTitleRef = useRef<string>(initialTitle || "Untitled");
@@ -77,7 +79,7 @@ export default function CollabBar({
         />
       </div>
 
-      {/* Right Section: Avatars + Divider + Share Button */}
+      {/* Right Section: Avatars + Divider + History Button + Share Button */}
       <div className="flex items-center space-x-3">
         {/* Presence Avatars Stack */}
         <div className="flex items-center">
@@ -125,6 +127,29 @@ export default function CollabBar({
 
         {/* Divider */}
         <span className="text-[#333333] select-none">|</span>
+
+        {/* History Button */}
+        <button
+          type="button"
+          onClick={onHistoryOpen}
+          className="inline-flex items-center space-x-1.5 rounded-md border border-[#333333] bg-transparent px-3 py-1.5 text-xs font-medium text-[#eeeeee] transition-colors hover:bg-[#1a1a1a]"
+          title="Version history"
+        >
+          <svg
+            className="h-3.5 w-3.5 text-[#aaaaaa]"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
+          </svg>
+          <span>History</span>
+        </button>
 
         {/* Share Button */}
         <button
