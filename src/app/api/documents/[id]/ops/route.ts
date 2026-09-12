@@ -40,14 +40,21 @@ export async function POST(
     //   The previous value of 0 caused ALL delete ops to sort before ALL
     //   insert ops on reload — every delete became a no-op (the target node
     //   didn't exist yet), so deleted content reappeared after a hard refresh.
+    // For inserts: use the op's own Lamport clock.
+    // For deletes: use targetId.clock + 1.
+    // For snapshots / other ops: use Date.now().
     const clock =
-      op.type === "insert" ? op.node.id.clock : op.targetId.clock + 1;
+      op.type === "insert"
+        ? op.node.id.clock
+        : op.type === "delete"
+        ? op.targetId.clock + 1
+        : Date.now();
 
     // Use service-role client — bypasses RLS so all authenticated sites can write.
     const supabase = createServerSupabaseClient();
     const { error } = await supabase.from("operations").insert({
       doc_id: id,
-      op_type: op.type,
+      op_type: op.type || "op",
       payload: op,   // stored as JSONB — not stringified, not wrapped
       site_id: siteId,
       clock,

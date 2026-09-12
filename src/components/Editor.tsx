@@ -111,27 +111,44 @@ export default function Editor({
   //
   // Uses the same causal pending-queue approach as the live Realtime handler:
   // parse all ops first, then apply them in a loop that retries ops whose
-  // predecessor hasn't been applied yet.  This handles two failure modes:
-  //
-  //   1. Delete ops stored at targetId.clock+1 might collide in clock order
-  //      with concurrent inserts from other sites — the queue resolves this.
-  //
-  //   2. Historical data from before the delete-clock fix (stored at clock=0)
-  //      still gets retried; they'll remain in `pending` after all inserts are
-  //      applied, then be drained in one final pass.
+  // predecessor hasn't been applied yet.
   const opsReplayedRef = useRef<boolean>(false);
+  const initialRichContentRef = useRef<Record<string, unknown> | null>(null);
+
   if (!opsReplayedRef.current) {
     opsReplayedRef.current = true;
+
+    // Check for any persisted snapshots (take the latest snapshot if available)
+    for (let i = initialOps.length - 1; i >= 0; i--) {
+      const row = initialOps[i];
+      try {
+        const payload =
+          typeof row.payload === "string"
+            ? JSON.parse(row.payload)
+            : row.payload;
+        if (row.op_type === "snapshot" || payload?.type === "snapshot") {
+          if (payload?.content) {
+            initialRichContentRef.current = payload.content as Record<string, unknown>;
+            break;
+          }
+        }
+      } catch {
+        // ignore parse error for snapshot detection
+      }
+    }
 
     // Parse every row up front, skipping any that can't be deserialised.
     const parsedOps: RGAOp[] = [];
     for (const row of initialOps) {
+      if (row.op_type === "snapshot") continue;
       try {
         const op: RGAOp =
           typeof row.payload === "string"
             ? deserializeOp(row.payload)
             : deserializeOp(JSON.stringify(row.payload));
-        if (op && op.type) parsedOps.push(op);
+        if (op && (op.type === "insert" || op.type === "delete")) {
+          parsedOps.push(op);
+        }
       } catch (err) {
         console.error("Error parsing op on mount:", err);
       }
@@ -175,6 +192,7 @@ export default function Editor({
 
   const channelRef = useRef<RealtimeChannel | null>(null);
   const isRemoteUpdateRef = useRef<boolean>(false);
+  const snapshotTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pageContainerRef = useRef<HTMLDivElement | null>(null);
   const scrollWrapperRef = useRef<HTMLDivElement | null>(null);
 
@@ -191,10 +209,6 @@ export default function Editor({
   // "Predecessor not found", the op is NOT discarded; instead it is buffered
   // here.  After every successful apply we drain the queue, repeatedly
   // retrying buffered ops until no further progress is made.
-  //
-  // This is correct for RGA: a missing predecessor means op N-1 hasn't
-  // arrived yet.  Once it arrives and is applied, drainPending() will unblock
-  // op N (and any subsequent ops that depended on N).
   // ---------------------------------------------------------------------------
   const pendingOpsRef = useRef<RGAOp[]>([]);
 
@@ -213,6 +227,29 @@ export default function Editor({
     }
   };
 
+  const debouncedSaveSnapshot = (json: Record<string, unknown>) => {
+    if (snapshotTimeoutRef.current) {
+      clearTimeout(snapshotTimeoutRef.current);
+    }
+    snapshotTimeoutRef.current = setTimeout(async () => {
+      try {
+        await fetch(`/api/documents/${docId}/ops`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            op: {
+              type: "snapshot",
+              content: json,
+            },
+            siteId: siteIdRef.current,
+          }),
+        });
+      } catch (err) {
+        console.error("Failed to persist snapshot:", err);
+      }
+    }, 1500);
+  };
+
   // ---------------------------------------------------------------------------
   // Tiptap editor
   // ---------------------------------------------------------------------------
@@ -226,7 +263,7 @@ export default function Editor({
       Color,
       FontSize,
     ],
-    content: initialText,
+    content: initialRichContentRef.current || (initialText.length > 0 ? initialText : undefined),
     editorProps: {
       attributes: {
         class: "mergo-editor-body outline-none",
@@ -237,9 +274,33 @@ export default function Editor({
       // Guard: don't process remote-triggered updates
       if (isRemoteUpdateRef.current) return;
 
+      const json = tiptapEditor.getJSON() as Record<string, unknown>;
+
+      // 1. Broadcast rich JSON document immediately over Supabase Realtime channel
+      if (channelRef.current) {
+        channelRef.current
+          .send({
+            type: "broadcast",
+            event: "doc_rich_update",
+            payload: {
+              siteId: siteIdRef.current,
+              json,
+            },
+          })
+          .catch((err) => {
+            console.error("Failed to broadcast rich update:", err);
+          });
+      }
+
+      // 2. Debounce persist snapshot
+      debouncedSaveSnapshot(json);
+
+      // 3. Diff text and generate RGA CRDT ops
       const newValue = tiptapEditor.getText();
       const oldValue = getVisibleText(docRef.current);
       const diff = computeDiff(oldValue, newValue);
+
+      setText(newValue);
 
       if (!diff) return;
 
@@ -265,9 +326,8 @@ export default function Editor({
         ops.push(op);
       }
 
-      // Update CRDT state FIRST, then sync display text from CRDT truth.
+      // Update CRDT state
       docRef.current = currentDoc;
-      setText(getVisibleText(currentDoc));
 
       ops.forEach((op) => persistOp(op));
     },
@@ -284,12 +344,7 @@ export default function Editor({
   }, [editor, onEditorReady]);
 
   // ---------------------------------------------------------------------------
-  // Supabase Realtime — ops + presence
-  //
-  // `editor` is intentionally NOT in the dependency array.  We access the
-  // current editor instance through `editorRef.current` inside the callback,
-  // which always points to the latest value without causing the channel to
-  // tear-down and re-subscribe on every Tiptap render.
+  // Supabase Realtime — ops + presence + broadcast
   // ---------------------------------------------------------------------------
   useEffect(() => {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -349,20 +404,59 @@ export default function Editor({
     }
 
     /**
-     * Push the current CRDT state into Tiptap and React state.
+     * Push the current CRDT state into Tiptap and React state if needed.
      */
     function flushToEditor(): void {
       const newText = getVisibleText(docRef.current);
       const currentEditor = editorRef.current;
-      if (currentEditor && newText !== currentEditor.getText()) {
-        isRemoteUpdateRef.current = true;
-        currentEditor.commands.setContent(newText, { emitUpdate: false });
-        isRemoteUpdateRef.current = false;
+      if (currentEditor) {
+        const curText = currentEditor.getText();
+        if (curText.length === 0 && newText.length > 0) {
+          isRemoteUpdateRef.current = true;
+          currentEditor.commands.setContent(newText, { emitUpdate: false });
+          isRemoteUpdateRef.current = false;
+        }
       }
       setText(newText);
     }
 
     channel
+      .on(
+        "broadcast",
+        { event: "doc_rich_update" },
+        ({ payload }) => {
+          if (!payload || payload.siteId === siteIdRef.current || !payload.json) return;
+          const currentEditor = editorRef.current;
+          if (!currentEditor) return;
+
+          isRemoteUpdateRef.current = true;
+          currentEditor.commands.setContent(payload.json, { emitUpdate: false });
+          isRemoteUpdateRef.current = false;
+
+          const visible = currentEditor.getText();
+          setText(visible);
+        }
+      )
+      .on(
+        "broadcast",
+        { event: "request_sync" },
+        ({ payload }) => {
+          if (!payload || payload.siteId === siteIdRef.current) return;
+          const currentEditor = editorRef.current;
+          if (!currentEditor) return;
+          const json = currentEditor.getJSON() as Record<string, unknown>;
+          channel
+            .send({
+              type: "broadcast",
+              event: "doc_rich_update",
+              payload: {
+                siteId: siteIdRef.current,
+                json,
+              },
+            })
+            .catch(console.error);
+        }
+      )
       .on(
         "postgres_changes",
         {
@@ -373,8 +467,9 @@ export default function Editor({
         },
         (payload) => {
           const newRow = payload.new as {
-            payload: RGAOp | string;
+            payload: RGAOp | Record<string, unknown> | string;
             site_id: string;
+            op_type?: string;
           };
 
           if (!newRow || !newRow.payload) return;
@@ -382,12 +477,14 @@ export default function Editor({
           // Skip ops this site already applied locally
           if (newRow.site_id === siteIdRef.current) return;
 
+          if (newRow.op_type === "snapshot") return;
+
           const incoming: RGAOp =
             typeof newRow.payload === "string"
               ? deserializeOp(newRow.payload)
               : deserializeOp(JSON.stringify(newRow.payload));
 
-          if (!incoming || !incoming.type) return;
+          if (!incoming || !incoming.type || (incoming as unknown as { type: string }).type === "snapshot") return;
 
           // Try to apply immediately.  If the predecessor is missing
           // (out-of-order delivery), buffer the op and wait for the gap
@@ -401,7 +498,7 @@ export default function Editor({
           // Op applied — drain any buffered ops that are now unblocked.
           drainPending();
 
-          // Flush the final CRDT state to Tiptap and React.
+          // Flush CRDT state.
           flushToEditor();
         }
       )
@@ -418,10 +515,21 @@ export default function Editor({
             userName,
             userImage: userImageUrl,
           });
+          // Request latest rich document from any online peer
+          channel
+            .send({
+              type: "broadcast",
+              event: "request_sync",
+              payload: { siteId: siteIdRef.current },
+            })
+            .catch(() => {});
         }
       });
 
     return () => {
+      if (snapshotTimeoutRef.current) {
+        clearTimeout(snapshotTimeoutRef.current);
+      }
       supabase.removeChannel(channel);
       channelRef.current = null;
       pendingOpsRef.current = [];
