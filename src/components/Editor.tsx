@@ -3,6 +3,15 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useUser } from "@clerk/nextjs";
 import { createClient, type RealtimeChannel } from "@supabase/supabase-js";
+import { useEditor, EditorContent } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import Underline from "@tiptap/extension-underline";
+import TextAlign from "@tiptap/extension-text-align";
+import { TextStyle } from "@tiptap/extension-text-style";
+import Color from "@tiptap/extension-color";
+import { FontSize } from "@/lib/tiptap/FontSize";
+import EditorToolbar from "@/components/EditorToolbar";
+import CollabBar from "@/components/CollabBar";
 import {
   createDocument,
   localInsert,
@@ -18,8 +27,6 @@ import {
   type PresenceUser,
   getUserColor,
 } from "@/lib/editor/collab";
-import CollabBar from "@/components/CollabBar";
-import RemoteCursors from "@/components/RemoteCursors";
 
 interface EditorProps {
   document: Document;
@@ -80,7 +87,6 @@ export default function Editor({
 }: EditorProps) {
   const docId = docEntity.id;
   const { user } = useUser();
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const siteIdRef = useRef<string>("");
   if (!siteIdRef.current) {
@@ -103,16 +109,14 @@ export default function Editor({
     docRef.current = rgaDoc;
   }
 
+  const initialText = getVisibleText(docRef.current);
   const currentTitleRef = useRef<string>(
     initialTitle ?? docEntity.title ?? "Untitled"
   );
-  const [text, setText] = useState<string>(() =>
-    getVisibleText(docRef.current!)
-  );
 
-  // Live presence users list
   const [presenceUsers, setPresenceUsers] = useState<PresenceUser[]>([]);
   const channelRef = useRef<RealtimeChannel | null>(null);
+  const isRemoteUpdateRef = useRef<boolean>(false);
 
   const isTypingRef = useRef<boolean>(false);
   const typingTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -132,7 +136,6 @@ export default function Editor({
   const userEmail = user?.primaryEmailAddress?.emailAddress || "";
   const userAvatar = user?.imageUrl || "";
 
-  // Helper to broadcast presence state
   const broadcastPresence = useCallback(
     async (
       customCursor?: {
@@ -170,13 +173,12 @@ export default function Editor({
     [user?.id, userName, userEmail, userAvatar, userColor]
   );
 
-  // Sync cursor with throttle
   const syncCursor = useCallback(
-    (textarea: HTMLTextAreaElement) => {
+    (from: number, to: number) => {
       const cursorData = {
-        index: textarea.selectionStart,
-        selectionStart: textarea.selectionStart,
-        selectionEnd: textarea.selectionEnd,
+        index: from,
+        selectionStart: from,
+        selectionEnd: to,
       };
       lastCursorRef.current = cursorData;
 
@@ -189,7 +191,91 @@ export default function Editor({
     [broadcastPresence]
   );
 
-  // Realtime channel setup for operations and presence
+  const persistOp = async (op: RGAOp) => {
+    try {
+      await fetch(`/api/documents/${docId}/ops`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ op, siteId: siteIdRef.current }),
+      });
+    } catch (err) {
+      console.error("Failed to persist operation:", err);
+    }
+  };
+
+  const editor = useEditor({
+    immediatelyRender: false,
+    extensions: [
+      StarterKit,
+      Underline,
+      TextAlign.configure({ types: ["heading", "paragraph"] }),
+      TextStyle,
+      Color,
+      FontSize,
+    ],
+    content: initialText,
+    editorProps: {
+      attributes: {
+        class: "mergo-editor-body min-h-[600px] outline-none",
+        spellcheck: "true",
+      },
+    },
+    onUpdate: ({ editor: tiptapEditor }) => {
+      if (isRemoteUpdateRef.current) return;
+      if (!docRef.current) return;
+
+      const newValue = tiptapEditor.getText();
+      const oldValue = getVisibleText(docRef.current);
+      const diff = computeDiff(oldValue, newValue);
+
+      // Track active typing
+      isTypingRef.current = true;
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+      typingTimerRef.current = setTimeout(() => {
+        isTypingRef.current = false;
+        broadcastPresence(lastCursorRef.current, false);
+      }, 1500);
+
+      const sel = tiptapEditor.state.selection;
+      syncCursor(sel.from, sel.to);
+
+      if (!diff) return;
+
+      if (diff.type === "insert") {
+        let currentDoc = docRef.current;
+        const ops: RGAOp[] = [];
+        for (let i = 0; i < diff.chars.length; i++) {
+          const [newDoc, op] = localInsert(
+            currentDoc,
+            diff.index + i,
+            diff.chars[i]
+          );
+          currentDoc = newDoc;
+          ops.push(op);
+        }
+        docRef.current = currentDoc;
+        ops.forEach((op) => persistOp(op));
+      }
+
+      if (diff.type === "delete") {
+        let currentDoc = docRef.current;
+        const ops: RGAOp[] = [];
+        for (let i = 0; i < diff.count; i++) {
+          const [newDoc, op] = localDelete(currentDoc, diff.index);
+          currentDoc = newDoc;
+          ops.push(op);
+        }
+        docRef.current = currentDoc;
+        ops.forEach((op) => persistOp(op));
+      }
+    },
+    onSelectionUpdate: ({ editor: tiptapEditor }) => {
+      const sel = tiptapEditor.state.selection;
+      syncCursor(sel.from, sel.to);
+    },
+  });
+
+  // Supabase Realtime channel setup for operations and presence
   useEffect(() => {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -233,7 +319,12 @@ export default function Editor({
 
             if (docRef.current && incoming && incoming.type) {
               docRef.current = applyOp(docRef.current, incoming);
-              setText(getVisibleText(docRef.current));
+              const newText = getVisibleText(docRef.current);
+              if (editor && newText !== editor.getText()) {
+                isRemoteUpdateRef.current = true;
+                editor.commands.setContent(newText, { emitUpdate: false });
+                isRemoteUpdateRef.current = false;
+              }
             }
           } catch (err) {
             console.error("Error applying remote op:", err);
@@ -286,19 +377,7 @@ export default function Editor({
       supabase.removeChannel(channel);
       channelRef.current = null;
     };
-  }, [docId, broadcastPresence]);
-
-  const persistOp = async (op: RGAOp) => {
-    try {
-      await fetch(`/api/documents/${docId}/ops`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ op, siteId: siteIdRef.current }),
-      });
-    } catch (err) {
-      console.error("Failed to persist operation:", err);
-    }
-  };
+  }, [docId, broadcastPresence, editor]);
 
   async function handleTitleBlur(e: React.FocusEvent<HTMLInputElement>) {
     const newTitle = e.target.value.trim() || "Untitled";
@@ -323,115 +402,41 @@ export default function Editor({
     }
   }
 
-  const onChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    if (!docRef.current) return;
-    const newValue = e.target.value;
-    const oldValue = getVisibleText(docRef.current);
-    const diff = computeDiff(oldValue, newValue);
-
-    // Track active typing
-    isTypingRef.current = true;
-    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
-    typingTimerRef.current = setTimeout(() => {
-      isTypingRef.current = false;
-      broadcastPresence(lastCursorRef.current, false);
-    }, 1500);
-
-    syncCursor(e.target);
-
-    if (!diff) return;
-
-    if (diff.type === "insert") {
-      let currentDoc = docRef.current;
-      const ops: RGAOp[] = [];
-      for (let i = 0; i < diff.chars.length; i++) {
-        const [newDoc, op] = localInsert(
-          currentDoc,
-          diff.index + i,
-          diff.chars[i]
-        );
-        currentDoc = newDoc;
-        ops.push(op);
-      }
-      docRef.current = currentDoc;
-      setText(getVisibleText(currentDoc));
-      ops.forEach((op) => persistOp(op));
-    }
-
-    if (diff.type === "delete") {
-      let currentDoc = docRef.current;
-      const ops: RGAOp[] = [];
-      for (let i = 0; i < diff.count; i++) {
-        const [newDoc, op] = localDelete(currentDoc, diff.index);
-        currentDoc = newDoc;
-        ops.push(op);
-      }
-      docRef.current = currentDoc;
-      setText(getVisibleText(currentDoc));
-      ops.forEach((op) => persistOp(op));
-    }
-  };
-
-  const handleSelectionOrCursorChange = (
-    e: React.SyntheticEvent<HTMLTextAreaElement>
-  ) => {
-    syncCursor(e.currentTarget);
-  };
-
-  const handleBlur = () => {
-    lastCursorRef.current = null;
-    broadcastPresence(null, false);
-  };
-
-  const remoteUsers = presenceUsers.filter(
-    (u) => u.siteId !== siteIdRef.current
-  );
-
   return (
-    <div className="flex flex-1 flex-col w-full">
-      {/* Collaboration Bar */}
-      <CollabBar
-        presenceUsers={presenceUsers}
-        currentSiteId={siteIdRef.current}
-      />
-
-      {/* Document Workspace */}
-      <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col px-8 py-8 space-y-6">
-        <input
-          type="text"
-          defaultValue={currentTitleRef.current}
-          onBlur={handleTitleBlur}
-          placeholder="Untitled"
-          aria-label="Document title"
-          className="w-full border-none bg-transparent text-3xl font-bold tracking-tight text-[#eeeeee] outline-none placeholder:text-[#444444]"
+    <div className="flex flex-1 flex-col h-screen overflow-hidden bg-[#060606] text-[#eeeeee]">
+      {/* Fixed Header Bar 1: CollabBar */}
+      <div className="sticky top-0 z-30 flex-shrink-0">
+        <CollabBar
+          presenceUsers={presenceUsers}
+          currentSiteId={siteIdRef.current}
         />
+      </div>
 
-        <div className="relative flex-1 flex flex-col min-h-[500px]">
-          {/* Remote Cursors and Collaborative Selection Overlay */}
-          <RemoteCursors
-            textareaRef={textareaRef}
-            remoteUsers={remoteUsers}
-            text={text}
+      {/* Fixed Header Bar 2: EditorToolbar */}
+      <div className="sticky top-11 z-20 flex-shrink-0">
+        <EditorToolbar editor={editor} />
+      </div>
+
+      {/* Scrollable Document Canvas */}
+      <div className="flex-1 overflow-y-auto py-10 px-4 flex justify-center bg-[#060606]">
+        {/* Centered Document Sheet (Google Docs Style) */}
+        <div className="w-full max-w-[816px] min-h-[1056px] bg-[#1a1a1a] px-16 py-16 shadow-2xl rounded-sm text-[#eeeeee] flex flex-col">
+          {/* Document Title Header */}
+          <input
+            type="text"
+            defaultValue={currentTitleRef.current}
+            onBlur={handleTitleBlur}
+            placeholder="Untitled document"
+            aria-label="Document title"
+            className="w-full border-none bg-transparent text-3xl font-bold tracking-tight text-[#eeeeee] outline-none placeholder:text-[#555555] mb-8"
           />
 
-          {/* Main Editing Textarea */}
-          <textarea
-            ref={textareaRef}
-            value={text}
-            onChange={onChange}
-            onClick={handleSelectionOrCursorChange}
-            onKeyUp={handleSelectionOrCursorChange}
-            onKeyDown={handleSelectionOrCursorChange}
-            onSelect={handleSelectionOrCursorChange}
-            onFocus={handleSelectionOrCursorChange}
-            onBlur={handleBlur}
-            placeholder="Start writing..."
-            spellCheck={false}
-            autoFocus
-            className="w-full flex-1 resize-none bg-transparent font-mono text-sm leading-relaxed text-[#eeeeee] outline-none placeholder:text-[#444444] min-h-[500px] border-none p-0 selection:bg-[#222222] relative z-10"
-          />
+          {/* Rich Text Editor Content */}
+          <div className="flex-1">
+            <EditorContent editor={editor} />
+          </div>
         </div>
-      </main>
+      </div>
     </div>
   );
 }
