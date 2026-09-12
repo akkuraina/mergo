@@ -28,29 +28,56 @@ export type DeleteOp = {
 
 export type RGAOp = InsertOp | DeleteOp;
 
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * True when ID `a` wins a tie-break against `b`.
+ * Higher clock wins; equal clock → higher site string (lexicographic) wins.
+ */
 function idGreaterThan(a: NodeID, b: NodeID): boolean {
   if (a.clock !== b.clock) return a.clock > b.clock;
   return a.site > b.site;
 }
 
+/**
+ * Resolve a visible (non-tombstone, non-sentinel) index to the RGANode at
+ * that position.
+ *
+ * index === -1  →  the sentinel head node (insert before all visible chars)
+ * index >= 0    →  the n-th live, non-sentinel character
+ *
+ * Throws if `index` is out of bounds.
+ */
 function getNodeAtVisibleIndex(nodes: RGANode[], index: number): RGANode {
-  // index -1 means "insert after sentinel"
+  // -1 means "insert after sentinel" — sentinel is always nodes[0]
   if (index === -1) {
-    return nodes[0]; // sentinel is always first
+    return nodes[0];
   }
+
   let count = -1;
   for (const node of nodes) {
     if (node.char === "") continue; // skip sentinel
-    if (!node.deleted) {
-      count++;
-      if (count === index) return node;
-    }
+    if (node.deleted) continue;    // skip tombstones
+    count++;
+    if (count === index) return node;
   }
+
   throw new Error(
     `Visible index ${index} out of bounds (visible length: ${count + 1})`
   );
 }
 
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a new empty RGA document for the given site.
+ * One sentinel node: { id: { clock: 0, site: '' }, char: '', deleted: false, prev: null }
+ * Clock starts at 1.
+ */
 export function createDocument(site: string): RGADocument {
   const sentinel: RGANode = {
     id: { clock: 0, site: "" },
@@ -66,34 +93,56 @@ export function createDocument(site: string): RGADocument {
   };
 }
 
+/**
+ * Return the visible (non-deleted, non-sentinel) text of the document.
+ */
+export function getVisibleText(doc: RGADocument): string {
+  return doc.nodes
+    .filter((n) => n.char !== "" && !n.deleted)
+    .map((n) => n.char)
+    .join("");
+}
+
+/**
+ * Return the number of visible (non-deleted, non-sentinel) characters.
+ */
+export function getVisibleLength(doc: RGADocument): number {
+  return doc.nodes.filter((n) => n.char !== "" && !n.deleted).length;
+}
+
+/**
+ * Insert `char` at visible position `index` on this site.
+ *
+ * The predecessor is the node at visible index `index - 1`.
+ * The new node is placed immediately after the predecessor in the node array
+ * (local insert never needs tie-breaking — no concurrent ops exist locally).
+ *
+ * Returns [updatedDoc, InsertOp].
+ */
 export function localInsert(
   doc: RGADocument,
   index: number,
   char: string
 ): [RGADocument, InsertOp] {
-  let prevNode: RGANode;
-  try {
-    prevNode = getNodeAtVisibleIndex(doc.nodes, index - 1);
-  } catch {
-    prevNode = doc.nodes[doc.nodes.length - 1] ?? doc.nodes[0];
-  }
+  // Predecessor: visible index (index - 1).  For index === 0 that's -1 → sentinel.
+  const prevNode = getNodeAtVisibleIndex(doc.nodes, index - 1);
 
   const prevIndex = doc.nodes.findIndex(
     (n) => n.id.clock === prevNode.id.clock && n.id.site === prevNode.id.site
   );
 
-  const resolvedPrevIndex = prevIndex === -1 ? 0 : prevIndex;
-  const actualPrevNode = doc.nodes[resolvedPrevIndex];
-
   const newNode: RGANode = {
     id: { clock: doc.clock, site: doc.site },
     char,
     deleted: false,
-    prev: actualPrevNode.id,
+    prev: prevNode.id,
   };
 
-  const newNodes = [...doc.nodes];
-  newNodes.splice(resolvedPrevIndex + 1, 0, newNode);
+  const newNodes = [
+    ...doc.nodes.slice(0, prevIndex + 1),
+    newNode,
+    ...doc.nodes.slice(prevIndex + 1),
+  ];
 
   const updatedDoc: RGADocument = {
     ...doc,
@@ -101,97 +150,100 @@ export function localInsert(
     clock: doc.clock + 1,
   };
 
-  const op: InsertOp = {
-    type: "insert",
-    node: newNode,
-  };
+  const op: InsertOp = { type: "insert", node: newNode };
 
   return [updatedDoc, op];
 }
 
+/**
+ * Delete the character at visible position `index` on this site.
+ *
+ * Marks the node as deleted (tombstone); the node is never physically removed.
+ * Returns [updatedDoc, DeleteOp].
+ */
 export function localDelete(
   doc: RGADocument,
   index: number
 ): [RGADocument, DeleteOp] {
-  let targetNode: RGANode | null = null;
-  try {
-    targetNode = getNodeAtVisibleIndex(doc.nodes, index);
-  } catch {
-    targetNode = null;
-  }
-
-  if (!targetNode) {
-    return [
-      doc,
-      { type: "delete", targetId: { clock: -1, site: "" } },
-    ];
-  }
+  const targetNode = getNodeAtVisibleIndex(doc.nodes, index);
 
   const newNodes = doc.nodes.map((n) =>
-    n.id.clock === targetNode?.id.clock && n.id.site === targetNode?.id.site
+    n.id.clock === targetNode.id.clock && n.id.site === targetNode.id.site
       ? { ...n, deleted: true }
       : n
   );
 
-  const updatedDoc: RGADocument = {
-    ...doc,
-    nodes: newNodes,
-  };
-
-  const op: DeleteOp = {
-    type: "delete",
-    targetId: targetNode.id,
-  };
+  const updatedDoc: RGADocument = { ...doc, nodes: newNodes };
+  const op: DeleteOp = { type: "delete", targetId: targetNode.id };
 
   return [updatedDoc, op];
 }
 
+/**
+ * Apply a remote (or replayed) op to `doc`.
+ *
+ * Insert:
+ *   1. Idempotency — skip if a node with the same (clock, site) already exists.
+ *   2. Find predecessor.
+ *   3. Scan forward past all nodes that beat the incoming node, regardless of
+ *      their own `prev` pointer (concurrent runs are contiguous and must all
+ *      be compared).
+ *   4. Insert.
+ *
+ * Delete:
+ *   Mark the target node as deleted (idempotent by nature).
+ */
 export function applyOp(doc: RGADocument, op: RGAOp): RGADocument {
   if (!op || !op.type) return doc;
 
   if (op.type === "insert") {
     if (!op.node || !op.node.id) return doc;
 
-    // 1. idempotency check
-    if (
-      doc.nodes.some(
-        (n) =>
-          n.id.clock === op.node.id.clock && n.id.site === op.node.id.site
-      )
-    ) {
-      return doc;
-    }
-
-    // 2. find predecessor index
-    const predIndex = doc.nodes.findIndex(
+    // 1. Idempotency — check both clock AND site
+    const exists = doc.nodes.some(
       (n) =>
-        n.id.clock === (op.node.prev?.clock ?? 0) &&
-        n.id.site === (op.node.prev?.site ?? "")
+        n.id.clock === op.node.id.clock && n.id.site === op.node.id.site
+    );
+    if (exists) return doc;
+
+    // 2. Find predecessor index
+    const predClock = op.node.prev?.clock ?? 0;
+    const predSite = op.node.prev?.site ?? "";
+    const predIndex = doc.nodes.findIndex(
+      (n) => n.id.clock === predClock && n.id.site === predSite
     );
     if (predIndex === -1) {
       throw new Error(
-        `Predecessor not found for op: ${JSON.stringify(op.node.id)}`
+        `Predecessor not found for op: ${JSON.stringify(op.node.id)}, prev: ${JSON.stringify(op.node.prev)}`
       );
     }
 
-    // 3. scan forward past all nodes that beat the incoming node
-    // Do NOT stop just because a node has a different prev —
-    // concurrent inserts at the same position form a contiguous run
-    // and ALL of them must be compared against the incoming node
+    // 3. Scan forward past all nodes that beat the incoming node.
+    //
+    //    Invariant: concurrent inserts at the same position form a contiguous
+    //    run.  We must skip every node whose predecessor is at or after
+    //    `predIndex` in the array AND whose ID beats the incoming node's ID.
+    //
+    //    We stop when:
+    //      (a) The candidate's predecessor is positioned *before* predIndex —
+    //          it belongs to a different (earlier) subtree, so we cannot
+    //          leapfrog it, or
+    //      (b) The candidate's ID does not beat the incoming node's ID —
+    //          incoming node wins the tie-break, so insert here.
     let insertAt = predIndex + 1;
     while (insertAt < doc.nodes.length) {
       const candidate = doc.nodes[insertAt];
 
-      // Stop if this node was inserted AFTER the predecessor's subtree
-      // i.e. its prev is "before" our predecessor in the document
-      const candidatePredIndex = doc.nodes.findIndex(
-        (n) =>
-          n.id.clock === (candidate.prev?.clock ?? 0) &&
-          n.id.site === (candidate.prev?.site ?? "")
+      const candidatePredClock = candidate.prev?.clock ?? 0;
+      const candidatePredSite = candidate.prev?.site ?? "";
+      const candidatePredIdx = doc.nodes.findIndex(
+        (n) => n.id.clock === candidatePredClock && n.id.site === candidatePredSite
       );
-      if (candidatePredIndex < predIndex) break;
 
-      // Within the concurrent run, skip nodes that beat the incoming node
+      // Candidate belongs to an earlier subtree — stop
+      if (candidatePredIdx < predIndex) break;
+
+      // Candidate beats incoming — skip it
       if (idGreaterThan(candidate.id, op.node.id)) {
         insertAt++;
       } else {
@@ -199,9 +251,12 @@ export function applyOp(doc: RGADocument, op: RGAOp): RGADocument {
       }
     }
 
-    // 4. insert
-    const newNodes = [...doc.nodes];
-    newNodes.splice(insertAt, 0, op.node);
+    // 4. Insert
+    const newNodes = [
+      ...doc.nodes.slice(0, insertAt),
+      op.node,
+      ...doc.nodes.slice(insertAt),
+    ];
     return {
       ...doc,
       nodes: newNodes,
@@ -216,25 +271,10 @@ export function applyOp(doc: RGADocument, op: RGAOp): RGADocument {
         ? { ...n, deleted: true }
         : n
     );
-
-    return {
-      ...doc,
-      nodes: newNodes,
-    };
+    return { ...doc, nodes: newNodes };
   }
 
   return doc;
-}
-
-export function getVisibleText(doc: RGADocument): string {
-  return doc.nodes
-    .filter((n) => n.char !== "" && !n.deleted)
-    .map((n) => n.char)
-    .join("");
-}
-
-export function getVisibleLength(doc: RGADocument): number {
-  return doc.nodes.filter((n) => n.char !== "" && !n.deleted).length;
 }
 
 export function serializeOp(op: RGAOp): string {

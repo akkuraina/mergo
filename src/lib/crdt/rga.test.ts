@@ -8,246 +8,298 @@ import {
   serializeOp,
   deserializeOp,
   type RGAOp,
+  type RGADocument,
+  type InsertOp,
+  type DeleteOp,
 } from "./rga";
 
-function runTests() {
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function assert(condition: boolean, message: string): void {
+  if (!condition) {
+    console.error(`FAIL: ${message}`);
+    process.exitCode = 1;
+  }
+}
+
+function pass(label: string): void {
+  console.log(`✓ ${label}`);
+}
+
+// ---------------------------------------------------------------------------
+// Test runner
+// ---------------------------------------------------------------------------
+
+function runTests(): void {
   console.log("Running RGA CRDT tests...");
 
-  // 1. Insert into empty document
+  // -------------------------------------------------------------------------
+  // Test 1 — Empty document
+  // -------------------------------------------------------------------------
   {
-    const doc = createDocument("site-1");
-    const [updatedDoc, op] = localInsert(doc, 0, "a");
-    console.assert(
-      getVisibleText(updatedDoc) === "a",
-      `Test 1 Failed: Expected "a", got "${getVisibleText(updatedDoc)}"`
-    );
-    console.assert(
-      getVisibleLength(updatedDoc) === 1,
-      `Test 1 Failed: Expected length 1, got ${getVisibleLength(updatedDoc)}`
-    );
-    console.assert(op.type === "insert", "Test 1 Failed: Expected insert op");
-    console.log("✓ Test 1 Passed: Insert into empty document");
+    const doc: RGADocument = createDocument("A");
+    assert(getVisibleText(doc) === "", `Test 1: expected '', got '${getVisibleText(doc)}'`);
+    assert(getVisibleLength(doc) === 0, `Test 1: expected length 0, got ${getVisibleLength(doc)}`);
+    pass("Test 1: Empty document");
   }
 
-  // 2. Sequential inserts — text is in correct order
+  // -------------------------------------------------------------------------
+  // Test 2 — Single insert
+  // -------------------------------------------------------------------------
   {
-    let doc = createDocument("site-1");
-    const chars = ["H", "e", "l", "l", "o"];
+    const doc = createDocument("A");
+    const [doc2, op] = localInsert(doc, 0, "a");
+    assert(op.type === "insert", "Test 2: op must be insert");
+    assert(getVisibleText(doc2) === "a", `Test 2: expected 'a', got '${getVisibleText(doc2)}'`);
+    assert(getVisibleLength(doc2) === 1, `Test 2: expected length 1, got ${getVisibleLength(doc2)}`);
+    pass("Test 2: Single insert");
+  }
+
+  // -------------------------------------------------------------------------
+  // Test 3 — Sequential inserts
+  // -------------------------------------------------------------------------
+  {
+    let doc = createDocument("A");
+    const chars = ["h", "e", "l", "l", "o"];
     for (let i = 0; i < chars.length; i++) {
-      const [nextDoc] = localInsert(doc, i, chars[i]);
-      doc = nextDoc;
+      const [next] = localInsert(doc, i, chars[i]);
+      doc = next;
     }
-    console.assert(
-      getVisibleText(doc) === "Hello",
-      `Test 2 Failed: Expected "Hello", got "${getVisibleText(doc)}"`
-    );
-    console.assert(
-      getVisibleLength(doc) === 5,
-      `Test 2 Failed: Expected length 5, got ${getVisibleLength(doc)}`
-    );
-
-    // Insert in the middle: 'H' (idx 0), 'e' (idx 1) -> insert '-' at index 1 -> "H-ello"
-    const [docWithMiddle] = localInsert(doc, 1, "-");
-    console.assert(
-      getVisibleText(docWithMiddle) === "H-ello",
-      `Test 2 Failed: Expected "H-ello", got "${getVisibleText(docWithMiddle)}"`
-    );
-    console.log("✓ Test 2 Passed: Sequential inserts");
+    assert(getVisibleText(doc) === "hello", `Test 3: expected 'hello', got '${getVisibleText(doc)}'`);
+    assert(getVisibleLength(doc) === 5, `Test 3: expected length 5, got ${getVisibleLength(doc)}`);
+    pass("Test 3: Sequential inserts");
   }
 
-  // 3. Delete — character disappears from visible text but node remains in doc.nodes
+  // -------------------------------------------------------------------------
+  // Test 4 — Delete (tombstone preserved, visible text shrinks)
+  // -------------------------------------------------------------------------
   {
-    let doc = createDocument("site-1");
+    let doc = createDocument("A");
     const [d1] = localInsert(doc, 0, "a");
     const [d2] = localInsert(d1, 1, "b");
     const [d3] = localInsert(d2, 2, "c");
-    console.assert(getVisibleText(d3) === "abc", "Test 3 Setup failed");
-    console.assert(d3.nodes.length === 4, "Test 3 Setup node length failed");
 
-    // Delete 'b' at visible index 1
-    const [deletedDoc, deleteOp] = localDelete(d3, 1);
-    console.assert(
-      getVisibleText(deletedDoc) === "ac",
-      `Test 3 Failed: Expected "ac", got "${getVisibleText(deletedDoc)}"`
-    );
-    console.assert(
-      deletedDoc.nodes.length === 4,
-      `Test 3 Failed: Node count should remain 4, got ${deletedDoc.nodes.length}`
-    );
-    console.assert(
-      deleteOp.type === "delete",
-      "Test 3 Failed: Expected delete op"
-    );
-    console.log("✓ Test 3 Passed: Delete with tombstone preservation");
+    assert(getVisibleText(d3) === "abc", "Test 4 setup: expected 'abc'");
+    // sentinel + 3 chars = 4 nodes
+    assert(d3.nodes.length === 4, `Test 4 setup: expected 4 nodes, got ${d3.nodes.length}`);
+
+    const [d4, delOp] = localDelete(d3, 1); // delete 'b'
+    assert(delOp.type === "delete", "Test 4: op must be delete");
+    assert(getVisibleText(d4) === "ac", `Test 4: expected 'ac', got '${getVisibleText(d4)}'`);
+    // node count stays 4 — tombstone is kept
+    assert(d4.nodes.length === 4, `Test 4: expected 4 nodes after delete, got ${d4.nodes.length}`);
+    pass("Test 4: Delete (tombstone preserved)");
   }
 
-  // 4. Concurrent insert conflict — two documents (site A and site B) both insert at position 0 simultaneously.
+  // -------------------------------------------------------------------------
+  // Test 5 — Convergence: concurrent insert at same position
+  // -------------------------------------------------------------------------
   {
-    let docA = createDocument("site-A");
-    let docB = createDocument("site-B");
+    // Both sites start with "ac"
+    let siteA = createDocument("site-A");
+    let siteB = createDocument("site-B");
 
-    const [docAAfterInsert, opA] = localInsert(docA, 0, "X");
-    const [docBAfterInsert, opB] = localInsert(docB, 0, "Y");
+    const sharedOps: RGAOp[] = [];
+    for (const [i, ch] of ["a", "c"].entries()) {
+      const [next, op] = localInsert(siteA, i, ch);
+      siteA = next;
+      sharedOps.push(op);
+    }
+    for (const op of sharedOps) {
+      siteB = applyOp(siteB, op);
+    }
 
-    // Apply A's op to B and B's op to A
-    const finalDocA = applyOp(docAAfterInsert, opB);
-    const finalDocB = applyOp(docBAfterInsert, opA);
+    // A inserts 'X' at index 1; B inserts 'Y' at index 1 — concurrently
+    const [siteA2, opA] = localInsert(siteA, 1, "X");
+    const [siteB2, opB] = localInsert(siteB, 1, "Y");
 
-    const textA = getVisibleText(finalDocA);
-    const textB = getVisibleText(finalDocB);
-
-    console.assert(
-      textA === textB,
-      `Test 4 Failed: Convergence error: textA="${textA}", textB="${textB}"`
-    );
-    console.log(
-      `✓ Test 4 Passed: Concurrent insert conflict converged to "${textA}"`
-    );
-  }
-
-  // 5. Idempotency — applying the same InsertOp twice produces the same document as applying it once
-  {
-    const doc = createDocument("site-1");
-    const [, op] = localInsert(createDocument("site-2"), 0, "Z");
-
-    const appliedOnce = applyOp(doc, op);
-    const appliedTwice = applyOp(appliedOnce, op);
-
-    console.assert(
-      appliedOnce.nodes.length === appliedTwice.nodes.length,
-      "Test 5 Failed: Node count changed after duplicate op"
-    );
-    console.assert(
-      getVisibleText(appliedOnce) === getVisibleText(appliedTwice),
-      "Test 5 Failed: Visible text changed after duplicate op"
-    );
-    console.log("✓ Test 5 Passed: Idempotency");
-  }
-
-  // 6. Delete of a concurrently inserted character
-  {
-    let docA = createDocument("site-A");
-    const [docWithH, initOp] = localInsert(docA, 0, "H");
-    docA = docWithH;
-
-    let docB = createDocument("site-B");
-    docB = applyOp(docB, initOp);
-
-    // Site A inserts 'i' at index 1 -> "Hi"
-    const [docA2, insertOpA] = localInsert(docA, 1, "i");
-
-    // Site B deletes 'H' at index 0 -> ""
-    const [docB2, deleteOpB] = localDelete(docB, 0);
-
-    // Exchange ops
-    const finalA = applyOp(docA2, deleteOpB);
-    const finalB = applyOp(docB2, insertOpA);
+    const finalA = applyOp(siteA2, opB);
+    const finalB = applyOp(siteB2, opA);
 
     const textA = getVisibleText(finalA);
     const textB = getVisibleText(finalB);
 
-    console.assert(
-      textA === textB,
-      `Test 6 Failed: Convergence error: textA="${textA}", textB="${textB}"`
-    );
-    console.assert(
-      textA === "i",
-      `Test 6 Failed: Expected visible text to be "i", got "${textA}"`
-    );
-    console.log(
-      `✓ Test 6 Passed: Delete of concurrently inserted character converged to "${textA}"`
-    );
+    assert(textA === textB, `Test 5: convergence failure — A='${textA}' B='${textB}'`);
+    assert(textA.length === 4, `Test 5: expected 4 chars, got ${textA.length} ('${textA}')`);
+    pass(`Test 5: Convergence — concurrent insert at same position → '${textA}'`);
   }
 
-  // 7. Mid-string insert convergence test
+  // -------------------------------------------------------------------------
+  // Test 6 — Convergence: concurrent insert at different positions
+  // -------------------------------------------------------------------------
   {
-    let siteA = createDocument("A");
-    let siteB = createDocument("B");
+    // Both sites start with "abc" (3 visible chars)
+    let siteA = createDocument("site-A");
+    let siteB = createDocument("site-B");
 
-    // Both sites start with "helo"
-    const ops: RGAOp[] = [];
-    "helo".split("").forEach((char, i) => {
-      const [newDoc, op] = localInsert(siteA, i, char);
-      siteA = newDoc;
-      ops.push(op);
-    });
-    ops.forEach((op) => {
+    const sharedOps: RGAOp[] = [];
+    for (const [i, ch] of ["a", "b", "c"].entries()) {
+      const [next, op] = localInsert(siteA, i, ch);
+      siteA = next;
+      sharedOps.push(op);
+    }
+    for (const op of sharedOps) {
       siteB = applyOp(siteB, op);
-    });
+    }
 
-    // A inserts 'l' at index 3, B inserts '!' at index 4 concurrently
-    let docA = siteA;
-    let docB = siteB;
-    const [docA2, opA] = localInsert(docA, 3, "l");
-    const [docB2, opB] = localInsert(docB, 4, "!");
+    // A inserts 'X' at index 0 (before 'a'); B inserts 'Z' at index 2 (before 'c')
+    const [siteA2, opA] = localInsert(siteA, 0, "X");
+    const [siteB2, opB] = localInsert(siteB, 2, "Z");
 
-    // Cross-apply
-    const docA_final = applyOp(docA2, opB);
-    const docB_final = applyOp(docB2, opA);
+    const finalA = applyOp(siteA2, opB);
+    const finalB = applyOp(siteB2, opA);
 
-    const textA = getVisibleText(docA_final);
-    const textB = getVisibleText(docB_final);
+    const textA = getVisibleText(finalA);
+    const textB = getVisibleText(finalB);
 
-    console.assert(
-      textA === textB,
-      `Test 7 Failed: Convergence failed: A="${textA}" B="${textB}"`
-    );
-    console.log(
-      `✓ Test 7 Passed: Mid-string insert converged to "${textA}" on both sites`
-    );
+    assert(textA === textB, `Test 6: convergence failure — A='${textA}' B='${textB}'`);
+    assert(textA.length === 5, `Test 6: expected 5 chars, got ${textA.length} ('${textA}')`);
+    pass(`Test 6: Convergence — concurrent insert at different positions → '${textA}'`);
   }
 
-  // 8. Concurrent insert order test (seeded document with concurrent inserts at position 0)
+  // -------------------------------------------------------------------------
+  // Test 7 — Idempotency: applying the same InsertOp twice is a no-op
+  // -------------------------------------------------------------------------
   {
-    let docA = createDocument("A");
-    let docB = createDocument("B");
+    let doc = createDocument("site-A");
+    const [, remoteOp] = localInsert(createDocument("site-B"), 0, "Z");
 
-    // seed both with 'x'
-    let opSeed: RGAOp;
-    [docA, opSeed] = localInsert(docA, 0, "x");
-    docB = applyOp(docB, opSeed);
+    const once = applyOp(doc, remoteOp);
+    const twice = applyOp(once, remoteOp);
 
-    // concurrent: A inserts 'A' at 0, B inserts 'B' at 0
-    const [docA2, opA] = localInsert(docA, 0, "A");
-    const [docB2, opB] = localInsert(docB, 0, "B");
-
-    // cross apply
-    const docA_final = applyOp(docA2, opB);
-    const docB_final = applyOp(docB2, opA);
-
-    const textA = getVisibleText(docA_final);
-    const textB = getVisibleText(docB_final);
-
-    console.assert(
-      textA === textB,
-      `Ordering diverged: A="${textA}" B="${textB}"`
+    assert(
+      once.nodes.length === twice.nodes.length,
+      `Test 7: node count changed — once=${once.nodes.length} twice=${twice.nodes.length}`
     );
-    console.log("✓ Test 8 Passed: Concurrent insert order test passed:", textA);
+    assert(
+      getVisibleText(once) === getVisibleText(twice),
+      `Test 7: visible text changed — once='${getVisibleText(once)}' twice='${getVisibleText(twice)}'`
+    );
+    pass("Test 7: Idempotency");
   }
 
-  // 9. Serialization and Deserialization
+  // -------------------------------------------------------------------------
+  // Test 8 — Delete of remotely inserted character
+  // -------------------------------------------------------------------------
+  {
+    let docA = createDocument("site-A");
+    let docB = createDocument("site-B");
+
+    // A inserts 'x'; B receives it
+    const [docA2, insertOp] = localInsert(docA, 0, "x");
+    docA = docA2;
+    docB = applyOp(docB, insertOp);
+
+    // B deletes 'x'
+    const [docB2, deleteOp] = localDelete(docB, 0);
+    docB = docB2;
+
+    // Cross-apply: A gets B's delete
+    docA = applyOp(docA, deleteOp);
+
+    const textA = getVisibleText(docA);
+    const textB = getVisibleText(docB);
+
+    assert(textA === textB, `Test 8: convergence failure — A='${textA}' B='${textB}'`);
+    assert(textA === "", `Test 8: expected '', got '${textA}'`);
+    pass("Test 8: Delete of remotely inserted character");
+  }
+
+  // -------------------------------------------------------------------------
+  // Test 9 — Replay from op log
+  // -------------------------------------------------------------------------
+  {
+    let siteA = createDocument("site-A");
+    const opsLog: RGAOp[] = [];
+
+    // Generate 5 ops: insert 'w','o','r','l','d'
+    for (const [i, ch] of ["w", "o", "r", "l", "d"].entries()) {
+      const [next, op] = localInsert(siteA, i, ch);
+      siteA = next;
+      opsLog.push(op);
+    }
+
+    // Replay on fresh doc
+    let fresh = createDocument("site-A");
+    for (const op of opsLog) {
+      fresh = applyOp(fresh, op);
+    }
+
+    const original = getVisibleText(siteA);
+    const replayed = getVisibleText(fresh);
+
+    assert(original === replayed, `Test 9: replay mismatch — original='${original}' replayed='${replayed}'`);
+    assert(original === "world", `Test 9: expected 'world', got '${original}'`);
+    pass("Test 9: Replay from op log");
+  }
+
+  // -------------------------------------------------------------------------
+  // Test 10 — Serialization round-trip
+  // -------------------------------------------------------------------------
   {
     const doc = createDocument("site-1");
     const [, insertOp] = localInsert(doc, 0, "k");
     const rawInsert = serializeOp(insertOp);
-    const parsedInsert = deserializeOp(rawInsert);
-    console.assert(
-      parsedInsert.type === insertOp.type &&
-        parsedInsert.node.char === insertOp.node.char,
-      "Serialization test failed for insert"
-    );
+    const parsedInsert = deserializeOp(rawInsert) as InsertOp;
+    assert(parsedInsert.type === "insert", "Test 10: insert type mismatch after deserialize");
+    assert(parsedInsert.node.char === "k", `Test 10: char mismatch — got '${parsedInsert.node.char}'`);
 
-    const [, deleteOp] = localDelete(applyOp(doc, insertOp), 0);
+    const withK = applyOp(doc, insertOp);
+    const [, deleteOp] = localDelete(withK, 0);
     const rawDelete = serializeOp(deleteOp);
-    const parsedDelete = deserializeOp(rawDelete);
-    console.assert(
-      parsedDelete.type === deleteOp.type &&
-        parsedDelete.targetId.clock === deleteOp.targetId.clock,
-      "Serialization test failed for delete"
+    const parsedDelete = deserializeOp(rawDelete) as DeleteOp;
+    assert(parsedDelete.type === "delete", "Test 10: delete type mismatch after deserialize");
+    assert(
+      parsedDelete.targetId.clock === deleteOp.targetId.clock,
+      `Test 10: targetId.clock mismatch — expected ${deleteOp.targetId.clock}, got ${parsedDelete.targetId.clock}`
     );
-    console.log("✓ Test 9 Passed: Op serialization and deserialization");
+    pass("Test 10: Serialization round-trip");
   }
 
+  // -------------------------------------------------------------------------
+  // Test 11 — Multi-character paste convergence
+  // -------------------------------------------------------------------------
+  {
+    let siteA = createDocument("site-A");
+    let siteB = createDocument("site-B");
+
+    // A pastes 'hello' (5 inserts at position 0 sequentially)
+    const opsA: RGAOp[] = [];
+    for (const [i, ch] of ["h", "e", "l", "l", "o"].entries()) {
+      const [next, op] = localInsert(siteA, i, ch);
+      siteA = next;
+      opsA.push(op);
+    }
+
+    // B pastes 'world' (5 inserts at position 0 sequentially) — simultaneously
+    const opsB: RGAOp[] = [];
+    for (const [i, ch] of ["w", "o", "r", "l", "d"].entries()) {
+      const [next, op] = localInsert(siteB, i, ch);
+      siteB = next;
+      opsB.push(op);
+    }
+
+    // Cross-apply all ops
+    for (const op of opsB) {
+      siteA = applyOp(siteA, op);
+    }
+    for (const op of opsA) {
+      siteB = applyOp(siteB, op);
+    }
+
+    const textA = getVisibleText(siteA);
+    const textB = getVisibleText(siteB);
+
+    assert(textA === textB, `Test 11: convergence failure — A='${textA}' B='${textB}'`);
+    assert(textA.length === 10, `Test 11: expected 10 chars, got ${textA.length} ('${textA}')`);
+    pass(`Test 11: Multi-character paste convergence → '${textA}'`);
+  }
+
+  // -------------------------------------------------------------------------
+  // Done
+  // -------------------------------------------------------------------------
   console.log("All RGA CRDT tests passed successfully!");
 }
 
