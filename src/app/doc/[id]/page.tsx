@@ -1,7 +1,7 @@
-import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { currentUser } from "@clerk/nextjs/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import Editor from "@/components/Editor";
+import DocClient from "./DocClient";
 import type { Document, Operation } from "@/lib/types";
 
 interface DocPageProps {
@@ -16,6 +16,19 @@ export default async function DocPage({
   if (!id) {
     notFound();
   }
+
+  const user = await currentUser();
+  if (!user) {
+    redirect("/sign-in");
+  }
+
+  const userId = user.id;
+  const userName =
+    user.fullName ||
+    `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() ||
+    user.username ||
+    "Collaborator";
+  const userImageUrl = user.imageUrl || "";
 
   const supabase = createServerSupabaseClient();
 
@@ -46,27 +59,13 @@ export default async function DocPage({
   const initialOps = opsError || !ops ? [] : (ops as Operation[]);
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#060606] text-[#eeeeee]">
-      {/* Header */}
-      <header className="flex h-12 items-center justify-between border-b border-[#1a1a1a] px-6">
-        <div className="flex items-center space-x-4">
-          <Link
-            href="/dashboard"
-            className="text-lg font-bold tracking-tight text-[#1fb622] hover:opacity-80"
-          >
-            Mergo
-          </Link>
-          <span className="text-sm text-[#1a1a1a]">/</span>
-          <span className="text-xs text-[#aaaaaa]">Document</span>
-        </div>
-      </header>
-
-      {/* Editor with integrated CollabBar and real-time remote cursors */}
-      <Editor
-        document={document}
-        initialOps={initialOps}
-        initialTitle={document.title}
-      />
-    </div>
+    <DocClient
+      docId={id}
+      initialTitle={document.title || "Untitled"}
+      initialOps={initialOps}
+      userId={userId}
+      userName={userName}
+      userImageUrl={userImageUrl}
+    />
   );
 }

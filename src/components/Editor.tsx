@@ -1,17 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
-import { useUser } from "@clerk/nextjs";
+import { useEffect, useRef, useState } from "react";
 import { createClient, type RealtimeChannel } from "@supabase/supabase-js";
-import { useEditor, EditorContent } from "@tiptap/react";
+import { useEditor, EditorContent, type Editor as TiptapEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
 import TextAlign from "@tiptap/extension-text-align";
 import { TextStyle } from "@tiptap/extension-text-style";
 import Color from "@tiptap/extension-color";
 import { FontSize } from "@/lib/tiptap/FontSize";
-import EditorToolbar from "@/components/EditorToolbar";
-import CollabBar from "@/components/CollabBar";
 import {
   createDocument,
   localInsert,
@@ -22,16 +19,25 @@ import {
   type RGADocument,
   type RGAOp,
 } from "@/lib/crdt/rga";
-import type { Document, Operation } from "@/lib/types";
-import {
-  type PresenceUser,
-  getUserColor,
-} from "@/lib/editor/collab";
+import type { Operation } from "@/lib/types";
+import type { PresenceUser } from "@/lib/editor/collab";
 
-interface EditorProps {
-  document: Document;
+export interface EditorProps {
+  docId: string;
   initialOps: Operation[];
   initialTitle?: string;
+  userId: string;
+  userName: string;
+  userImageUrl: string;
+  onPresenceChange: (users: PresenceUser[]) => void;
+  onStatsChange: (stats: {
+    words: number;
+    chars: number;
+    pages: number;
+    currentPage: number;
+  }) => void;
+  zoom: number;
+  onEditorReady?: (editor: TiptapEditor | null) => void;
 }
 
 function computeDiff(
@@ -81,13 +87,16 @@ function computeDiff(
 }
 
 export default function Editor({
-  document: docEntity,
+  docId,
   initialOps,
-  initialTitle,
+  userId,
+  userName,
+  userImageUrl,
+  onPresenceChange,
+  onStatsChange,
+  zoom,
+  onEditorReady,
 }: EditorProps) {
-  const docId = docEntity.id;
-  const { user } = useUser();
-
   const siteIdRef = useRef<string>("");
   if (!siteIdRef.current) {
     siteIdRef.current = crypto.randomUUID();
@@ -110,86 +119,13 @@ export default function Editor({
   }
 
   const initialText = getVisibleText(docRef.current);
-  const currentTitleRef = useRef<string>(
-    initialTitle ?? docEntity.title ?? "Untitled"
-  );
+  const [text, setText] = useState<string>(initialText);
+  const [pageBreaks, setPageBreaks] = useState<number[]>([]);
 
-  const [presenceUsers, setPresenceUsers] = useState<PresenceUser[]>([]);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const isRemoteUpdateRef = useRef<boolean>(false);
-
-  const isTypingRef = useRef<boolean>(false);
-  const typingTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const cursorThrottleTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const lastCursorRef = useRef<{
-    index: number;
-    selectionStart?: number;
-    selectionEnd?: number;
-  } | null>(null);
-
-  const userColor = getUserColor(user?.id || siteIdRef.current);
-  const userName =
-    user?.fullName ||
-    user?.firstName ||
-    user?.username ||
-    "Collaborator";
-  const userEmail = user?.primaryEmailAddress?.emailAddress || "";
-  const userAvatar = user?.imageUrl || "";
-
-  const broadcastPresence = useCallback(
-    async (
-      customCursor?: {
-        index: number;
-        selectionStart?: number;
-        selectionEnd?: number;
-      } | null,
-      customTyping?: boolean
-    ) => {
-      if (!channelRef.current) return;
-
-      const activeCursor =
-        customCursor !== undefined ? customCursor : lastCursorRef.current;
-      const activeTyping =
-        customTyping !== undefined ? customTyping : isTypingRef.current;
-
-      const payload: PresenceUser = {
-        siteId: siteIdRef.current,
-        userId: user?.id || siteIdRef.current,
-        name: userName,
-        email: userEmail,
-        imageUrl: userAvatar,
-        color: userColor,
-        isTyping: activeTyping,
-        cursor: activeCursor,
-        lastActive: Date.now(),
-      };
-
-      try {
-        await channelRef.current.track(payload);
-      } catch {
-        // Ignore tracking error
-      }
-    },
-    [user?.id, userName, userEmail, userAvatar, userColor]
-  );
-
-  const syncCursor = useCallback(
-    (from: number, to: number) => {
-      const cursorData = {
-        index: from,
-        selectionStart: from,
-        selectionEnd: to,
-      };
-      lastCursorRef.current = cursorData;
-
-      if (cursorThrottleTimerRef.current) return;
-      cursorThrottleTimerRef.current = setTimeout(() => {
-        cursorThrottleTimerRef.current = null;
-        broadcastPresence(lastCursorRef.current);
-      }, 50);
-    },
-    [broadcastPresence]
-  );
+  const pageContainerRef = useRef<HTMLDivElement | null>(null);
+  const scrollWrapperRef = useRef<HTMLDivElement | null>(null);
 
   const persistOp = async (op: RGAOp) => {
     try {
@@ -216,7 +152,7 @@ export default function Editor({
     content: initialText,
     editorProps: {
       attributes: {
-        class: "mergo-editor-body min-h-[600px] outline-none",
+        class: "mergo-editor-body outline-none",
         spellcheck: "true",
       },
     },
@@ -228,16 +164,7 @@ export default function Editor({
       const oldValue = getVisibleText(docRef.current);
       const diff = computeDiff(oldValue, newValue);
 
-      // Track active typing
-      isTypingRef.current = true;
-      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
-      typingTimerRef.current = setTimeout(() => {
-        isTypingRef.current = false;
-        broadcastPresence(lastCursorRef.current, false);
-      }, 1500);
-
-      const sel = tiptapEditor.state.selection;
-      syncCursor(sel.from, sel.to);
+      setText(newValue);
 
       if (!diff) return;
 
@@ -269,11 +196,68 @@ export default function Editor({
         ops.forEach((op) => persistOp(op));
       }
     },
-    onSelectionUpdate: ({ editor: tiptapEditor }) => {
-      const sel = tiptapEditor.state.selection;
-      syncCursor(sel.from, sel.to);
-    },
   });
+
+  // Notify parent component when editor instance changes
+  useEffect(() => {
+    if (onEditorReady) {
+      onEditorReady(editor);
+    }
+  }, [editor, onEditorReady]);
+
+  // Page break calculations and stats update on content change
+  useEffect(() => {
+    const container = pageContainerRef.current;
+    const wrapper = scrollWrapperRef.current;
+    if (!container || !docRef.current) return;
+
+    const totalHeight = container.scrollHeight;
+    const pageCount = Math.max(1, Math.ceil(totalHeight / 1056));
+    setPageBreaks(Array.from({ length: pageCount - 1 }, (_, i) => (i + 1) * 1056));
+
+    const scrollTop = wrapper ? wrapper.scrollTop : 0;
+    const curPage = Math.min(pageCount, Math.max(1, Math.floor(scrollTop / 1056) + 1));
+
+    const visibleText = getVisibleText(docRef.current);
+    const words = visibleText.trim() ? visibleText.trim().split(/\s+/).filter(Boolean).length : 0;
+    const chars = visibleText.length;
+
+    onStatsChange({
+      words,
+      chars,
+      pages: pageCount,
+      currentPage: curPage,
+    });
+  }, [text, onStatsChange]);
+
+  // Scroll listener for real-time current page detection
+  useEffect(() => {
+    const wrapper = scrollWrapperRef.current;
+    if (!wrapper) return;
+
+    const handleScroll = () => {
+      const scrollTop = wrapper.scrollTop;
+      const container = pageContainerRef.current;
+      const totalHeight = container ? container.scrollHeight : 1056;
+      const pageCount = Math.max(1, Math.ceil(totalHeight / 1056));
+      const curPage = Math.min(pageCount, Math.max(1, Math.floor(scrollTop / 1056) + 1));
+
+      if (docRef.current) {
+        const visibleText = getVisibleText(docRef.current);
+        const words = visibleText.trim() ? visibleText.trim().split(/\s+/).filter(Boolean).length : 0;
+        const chars = visibleText.length;
+        onStatsChange({
+          words,
+          chars,
+          pages: pageCount,
+          currentPage: curPage,
+        });
+      }
+    };
+
+    wrapper.addEventListener("scroll", handleScroll, { passive: true });
+    return () => wrapper.removeEventListener("scroll", handleScroll);
+  }, [onStatsChange]);
 
   // Supabase Realtime channel setup for operations and presence
   useEffect(() => {
@@ -324,6 +308,7 @@ export default function Editor({
                 isRemoteUpdateRef.current = true;
                 editor.commands.setContent(newText, { emitUpdate: false });
                 isRemoteUpdateRef.current = false;
+                setText(newText);
               }
             }
           } catch (err) {
@@ -333,109 +318,44 @@ export default function Editor({
       )
       .on("presence", { event: "sync" }, () => {
         const state = channel.presenceState<PresenceUser>();
-        const allUsers: PresenceUser[] = [];
-        for (const key of Object.keys(state)) {
-          const presences = state[key];
-          if (presences && presences.length > 0) {
-            allUsers.push(presences[0]);
-          }
-        }
-        setPresenceUsers(allUsers);
-      })
-      .on("presence", { event: "join" }, () => {
-        const state = channel.presenceState<PresenceUser>();
-        const allUsers: PresenceUser[] = [];
-        for (const key of Object.keys(state)) {
-          const presences = state[key];
-          if (presences && presences.length > 0) {
-            allUsers.push(presences[0]);
-          }
-        }
-        setPresenceUsers(allUsers);
-      })
-      .on("presence", { event: "leave" }, () => {
-        const state = channel.presenceState<PresenceUser>();
-        const allUsers: PresenceUser[] = [];
-        for (const key of Object.keys(state)) {
-          const presences = state[key];
-          if (presences && presences.length > 0) {
-            allUsers.push(presences[0]);
-          }
-        }
-        setPresenceUsers(allUsers);
+        const users = Object.values(state).flat() as PresenceUser[];
+        onPresenceChange(users);
       })
       .subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
-          await broadcastPresence(null, false);
+          await channel.track({
+            siteId: siteIdRef.current,
+            userId,
+            userName,
+            userImage: userImageUrl,
+          });
         }
       });
 
     return () => {
-      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
-      if (cursorThrottleTimerRef.current)
-        clearTimeout(cursorThrottleTimerRef.current);
       supabase.removeChannel(channel);
       channelRef.current = null;
     };
-  }, [docId, broadcastPresence, editor]);
-
-  async function handleTitleBlur(e: React.FocusEvent<HTMLInputElement>) {
-    const newTitle = e.target.value.trim() || "Untitled";
-    if (newTitle === currentTitleRef.current) return;
-
-    currentTitleRef.current = newTitle;
-    try {
-      const res = await fetch(`/api/documents/${docId}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ title: newTitle }),
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        console.error("Failed to update document title:", errorData);
-      }
-    } catch (err) {
-      console.error("Error updating document title:", err);
-    }
-  }
+  }, [docId, userId, userName, userImageUrl, onPresenceChange, editor]);
 
   return (
-    <div className="flex flex-1 flex-col h-screen overflow-hidden bg-[#060606] text-[#eeeeee]">
-      {/* Fixed Header Bar 1: CollabBar */}
-      <div className="sticky top-0 z-30 flex-shrink-0">
-        <CollabBar
-          presenceUsers={presenceUsers}
-          currentSiteId={siteIdRef.current}
-        />
-      </div>
-
-      {/* Fixed Header Bar 2: EditorToolbar */}
-      <div className="sticky top-11 z-20 flex-shrink-0">
-        <EditorToolbar editor={editor} />
-      </div>
-
-      {/* Scrollable Document Canvas */}
-      <div className="flex-1 overflow-y-auto py-10 px-4 flex justify-center bg-[#060606]">
-        {/* Centered Document Sheet (Google Docs Style) */}
-        <div className="w-full max-w-[816px] min-h-[1056px] bg-[#1a1a1a] px-16 py-16 shadow-2xl rounded-sm text-[#eeeeee] flex flex-col">
-          {/* Document Title Header */}
-          <input
-            type="text"
-            defaultValue={currentTitleRef.current}
-            onBlur={handleTitleBlur}
-            placeholder="Untitled document"
-            aria-label="Document title"
-            className="w-full border-none bg-transparent text-3xl font-bold tracking-tight text-[#eeeeee] outline-none placeholder:text-[#555555] mb-8"
+    <div ref={scrollWrapperRef} className="editor-scroll-wrapper">
+      <div
+        ref={pageContainerRef}
+        className="page-container"
+        style={{
+          transform: `scale(${zoom / 100})`,
+          transformOrigin: "top center",
+        }}
+      >
+        {pageBreaks.map((topPos) => (
+          <div
+            key={topPos}
+            className="page-break-line"
+            style={{ top: `${topPos}px` }}
           />
-
-          {/* Rich Text Editor Content */}
-          <div className="flex-1">
-            <EditorContent editor={editor} />
-          </div>
-        </div>
+        ))}
+        <EditorContent editor={editor} />
       </div>
     </div>
   );
