@@ -2,8 +2,16 @@ import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
+import { Playfair_Display } from "next/font/google";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import "./globals.css";
+
+const playfair = Playfair_Display({
+  subsets: ["latin"],
+  weight: ["700"],
+  style: ["normal", "italic"],
+  variable: "--font-playfair",
+});
 
 export const metadata: Metadata = {
   title: "Mergo — Real-time Collaborative Text Editor",
@@ -34,7 +42,7 @@ export default function RootLayout({
       <html
         lang="en"
         suppressHydrationWarning
-        className={`${GeistSans.variable} ${GeistMono.variable}`}
+        className={`${GeistSans.variable} ${GeistMono.variable} ${playfair.variable}`}
       >
         <head>
           <script

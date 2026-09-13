@@ -5,6 +5,7 @@ import { UserButton } from "@clerk/nextjs";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import NewDocButton from "@/components/NewDocButton";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { MergoWordmark } from "@/components/MergoWordmark";
 import type { Document } from "@/lib/types";
 
 type DashboardDoc = Document & {
@@ -102,9 +103,9 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
         <div className="flex items-center space-x-6">
           <Link
             href="/dashboard"
-            className="text-xl font-bold tracking-tight text-[#1fb622]"
+            className="hover:opacity-80 transition-opacity flex items-center"
           >
-            Mergo
+            <MergoWordmark size="md" />
           </Link>
         </div>
         <div className="flex items-center space-x-4">

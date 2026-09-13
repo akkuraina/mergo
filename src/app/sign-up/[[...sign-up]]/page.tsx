@@ -1,32 +1,88 @@
 import { SignUp } from "@clerk/nextjs";
+import { dark } from "@clerk/themes";
+import { MergoWordmark } from "@/components/MergoWordmark";
 
 export default function SignUpPage() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-[var(--bg-base)] p-4">
-      <div className="w-full max-w-md flex flex-col items-center">
-        <h1 className="text-2xl font-bold tracking-tight text-[#1fb622] mb-6">
-          Mergo
-        </h1>
-        <SignUp
-          appearance={{
-            elements: {
-              card: "bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-none rounded-lg",
-              headerTitle: "text-[var(--text-primary)]",
-              headerSubtitle: "text-[var(--text-muted)]",
-              socialButtonsBlockButton:
-                "bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] hover:bg-[var(--border-subtle)]",
-              formButtonPrimary:
-                "bg-[#1fb622] hover:bg-[#cff0c5] hover:text-[#060606] text-[#060606] font-medium transition-colors rounded-lg",
-              formFieldInput:
-                "bg-[var(--bg-base)] border border-[var(--border-subtle)] text-[var(--text-primary)] rounded-lg focus:border-[#1fb622]",
-              formFieldLabel: "text-[var(--text-muted)]",
-              footerActionLink: "text-[#1fb622] hover:text-[#cff0c5]",
-              identityPreviewText: "text-[var(--text-primary)]",
-              identityPreviewEditButton: "text-[#1fb622] hover:text-[#cff0c5]",
+    <main
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "var(--bg-base)",
+        flexDirection: "column",
+        gap: "32px",
+      }}
+    >
+      {/* Brand above the Clerk box */}
+      <MergoWordmark size="lg" />
+
+      <SignUp
+        appearance={{
+          theme: dark,
+          variables: {
+            colorPrimary: "#1fb622",
+            colorPrimaryForeground: "#060606",
+            colorBackground: "#0d0d0d",
+            colorInput: "#111111",
+            colorInputForeground: "#eeeeee",
+            colorForeground: "#eeeeee",
+            colorMutedForeground: "#aaaaaa",
+            colorNeutral: "#333333",
+            borderRadius: "8px",
+            fontFamily: "GeistSans, sans-serif",
+          },
+          elements: {
+            card: {
+              border: "1px solid #1a1a1a",
+              boxShadow: "none",
+              background: "#0d0d0d",
             },
-          }}
-        />
-      </div>
+            headerTitle: {
+              color: "#eeeeee",
+              fontFamily: '"Playfair Display", serif',
+              fontSize: "22px",
+            },
+            headerSubtitle: {
+              color: "#aaaaaa",
+            },
+            socialButtonsBlockButton: {
+              background: "#111111",
+              border: "1px solid #222222",
+              color: "#eeeeee",
+            },
+            socialButtonsBlockButtonText: {
+              color: "#eeeeee",
+            },
+            dividerLine: {
+              background: "#222222",
+            },
+            dividerText: {
+              color: "#555555",
+            },
+            formFieldInput: {
+              background: "#111111",
+              border: "1px solid #222222",
+              color: "#eeeeee",
+            },
+            formFieldLabel: {
+              color: "#aaaaaa",
+            },
+            footerActionLink: {
+              color: "#1fb622",
+            },
+            identityPreviewText: {
+              color: "#eeeeee",
+            },
+            formButtonPrimary: {
+              background: "#1fb622",
+              color: "#060606",
+              fontWeight: "600",
+            },
+          },
+        }}
+      />
     </main>
   );
 }

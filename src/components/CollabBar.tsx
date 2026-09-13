@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { type PresenceUser, getUserInitials } from "@/lib/editor/collab";
 import { ThemeToggle } from "./ThemeToggle";
+import { MergoWordmark } from "./MergoWordmark";
 
 interface CollabBarProps {
   docId: string;
@@ -67,9 +68,9 @@ export default function CollabBar({
       <div className="flex items-center space-x-3 flex-1 max-w-md">
         <Link
           href="/dashboard"
-          className="text-base font-bold tracking-tight text-[#1fb622] hover:opacity-80 transition-opacity select-none"
+          className="hover:opacity-80 transition-opacity select-none flex items-center"
         >
-          Mergo
+          <MergoWordmark size="sm" />
         </Link>
         <span className="text-[var(--text-faint)] select-none">/</span>
         <input

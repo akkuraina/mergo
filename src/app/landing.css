@@ -1,0 +1,130 @@
+/* landing.css - Keyframe animations and animation utility classes */
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  0% {
+    transform: scale(0.96);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes cursorBlink {
+  0%, 100% { border-right-color: #1fb622; }
+  50% { border-right-color: transparent; }
+}
+
+@keyframes charAppear {
+  0% {
+    opacity: 0;
+    visibility: hidden;
+  }
+  100% {
+    opacity: 1;
+    visibility: visible;
+  }
+}
+
+@keyframes cursorPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@keyframes cursorFadeOut {
+  0% { opacity: 1; }
+  100% { opacity: 0; visibility: hidden; }
+}
+
+@keyframes wordmarkPop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+.hero-wordmark {
+  animation: scaleIn 600ms ease forwards;
+  animation-delay: 200ms;
+  opacity: 0;
+}
+
+.hero-wordmark-wrap {
+  display: inline-flex;
+  align-items: baseline;
+  animation: wordmarkPop 300ms ease forwards;
+  animation-delay: 1400ms;
+}
+
+.type-char {
+  opacity: 0;
+  visibility: hidden;
+  animation: charAppear 1ms forwards;
+}
+
+.type-char-1 { animation-delay: 800ms; }
+.type-char-2 { animation-delay: 920ms; }
+.type-char-3 { animation-delay: 1040ms; }
+.type-char-4 { animation-delay: 1160ms; }
+.type-char-5 { animation-delay: 1280ms; }
+
+.type-cursor {
+  display: inline-block;
+  color: #1fb622;
+  font-weight: 300;
+  animation: cursorPulse 600ms infinite, cursorFadeOut 200ms ease forwards;
+  animation-delay: 0ms, 1400ms;
+}
+
+.hero-subtitle {
+  animation: fadeUp 400ms ease forwards;
+  animation-delay: 1600ms;
+  opacity: 0;
+}
+
+.hero-cta {
+  animation: fadeUp 400ms ease forwards;
+  animation-delay: 2000ms;
+  opacity: 0;
+}
+
+.hero-scroll-hint {
+  animation: fadeUp 400ms ease forwards;
+  animation-delay: 2400ms;
+  opacity: 0;
+}
+
+.hero-bg {
+  background-image:
+    linear-gradient(var(--border-subtle) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border-subtle) 1px, transparent 1px);
+  background-size: 48px 48px;
+  opacity: 0.4;
+}
+
+.feature-card {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 500ms ease, transform 500ms ease;
+}
+
+.feature-card.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
