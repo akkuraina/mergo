@@ -18,6 +18,7 @@ interface DocClientProps {
   userId: string;
   userName: string;
   userImageUrl: string;
+  role: "owner" | "collaborator";
 }
 
 export default function DocClient({
@@ -27,6 +28,7 @@ export default function DocClient({
   userId,
   userName,
   userImageUrl,
+  role,
 }: DocClientProps) {
   const [presenceUsers, setPresenceUsers] = useState<PresenceUser[]>([]);
   const [zoom, setZoom] = useState<number>(100);
@@ -99,6 +101,7 @@ export default function DocClient({
         initialTitle={initialTitle}
         presenceUsers={presenceUsers}
         onHistoryOpen={() => setHistoryOpen(true)}
+        role={role}
       />
 
       {/* Fixed Editor Toolbar (44px, positioned directly below CollabBar) */}

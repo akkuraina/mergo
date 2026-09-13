@@ -10,6 +10,7 @@ interface CollabBarProps {
   initialTitle: string;
   presenceUsers: PresenceUser[];
   onHistoryOpen?: () => void;
+  role?: "owner" | "collaborator";
 }
 
 export default function CollabBar({
@@ -17,6 +18,7 @@ export default function CollabBar({
   initialTitle,
   presenceUsers,
   onHistoryOpen,
+  role = "owner",
 }: CollabBarProps) {
   const [copied, setCopied] = useState(false);
   const currentTitleRef = useRef<string>(initialTitle || "Untitled");
@@ -60,7 +62,7 @@ export default function CollabBar({
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 flex h-12 items-center justify-between border-b border-[#1a1a1a] bg-[#0d0d0d] px-6">
-      {/* Left Section: Wordmark + Divider + Inline Editable Title */}
+      {/* Left Section: Wordmark + Divider + Inline Editable Title + Shared Badge */}
       <div className="flex items-center space-x-3 flex-1 max-w-md">
         <Link
           href="/dashboard"
@@ -77,6 +79,11 @@ export default function CollabBar({
           aria-label="Document title"
           className="w-full bg-transparent text-sm font-sans text-[#eeeeee] outline-none placeholder:text-[#555555] border-none p-0 focus:ring-0"
         />
+        {role === "collaborator" && (
+          <span className="ml-2 rounded border border-[#1a2e1a] bg-[#0d1a0d] px-2 py-0.5 font-mono text-[11px] text-[#1fb622] select-none">
+            shared
+          </span>
+        )}
       </div>
 
       {/* Right Section: Avatars + Divider + History Button + Share Button */}

@@ -9,3 +9,13 @@ export type VersionRow = {
   op_cursor: number;
   created_at: string;
 };
+
+export type CollaboratorRow = {
+  id: string;
+  doc_id: string;
+  user_id: string;
+  user_name: string;
+  user_image: string | null;
+  joined_at: string;
+  last_seen_at: string;
+};

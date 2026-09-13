@@ -56,6 +56,27 @@ export default async function DocPage({
   }
 
   const document = doc as Document;
+  const role: "owner" | "collaborator" =
+    document.created_by === userId ? "owner" : "collaborator";
+
+  // Register as collaborator if not the owner
+  if (role === "collaborator") {
+    const { error: collabError } = await supabase.from("collaborators").upsert(
+      {
+        doc_id: id,
+        user_id: userId,
+        user_name: userName,
+        user_image: userImageUrl || null,
+        last_seen_at: new Date().toISOString(),
+      },
+      { onConflict: "doc_id,user_id" }
+    );
+
+    if (collabError) {
+      console.error("Supabase upsert collaborator error:", collabError);
+    }
+  }
+
   const initialOps = opsError || !ops ? [] : (ops as Operation[]);
 
   return (
@@ -66,6 +87,7 @@ export default async function DocPage({
       userId={userId}
       userName={userName}
       userImageUrl={userImageUrl}
+      role={role}
     />
   );
 }
