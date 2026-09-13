@@ -87,7 +87,7 @@ export default function DocClient({
   };
 
   return (
-    <div className="relative min-h-screen bg-[#060606] text-[#eeeeee]">
+    <div className="relative min-h-screen bg-[var(--bg-base)] text-[var(--text-primary)]">
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed bottom-12 left-1/2 z-50 -translate-x-1/2 rounded-md bg-[#1fb622] px-4 py-2 text-xs font-semibold text-[#060606] shadow-lg animate-fade-in">

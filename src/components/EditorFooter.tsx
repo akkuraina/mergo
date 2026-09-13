@@ -30,15 +30,15 @@ export default function EditorFooter({
   }
 
   return (
-    <footer className="fixed bottom-0 left-0 right-0 z-50 flex h-9 items-center justify-between border-t border-[#1a1a1a] bg-[#0d0d0d] px-6 font-mono text-[11px] text-[#aaaaaa] select-none">
+    <footer className="fixed bottom-0 left-0 right-0 z-50 flex h-9 items-center justify-between border-t border-[var(--border-subtle)] bg-[var(--bg-surface)] px-6 font-mono text-[11px] text-[var(--text-muted)] select-none">
       {/* Left Section: Document Statistics */}
       <div className="flex items-center space-x-3">
         <span>
           Page {currentPage} of {pages}
         </span>
-        <span className="text-[#333333]">|</span>
+        <span className="text-[var(--text-faint)]">|</span>
         <span>{words} words</span>
-        <span className="text-[#333333]">|</span>
+        <span className="text-[var(--text-faint)]">|</span>
         <span>{chars} characters</span>
       </div>
 
@@ -48,7 +48,7 @@ export default function EditorFooter({
           type="button"
           onClick={handleZoomOut}
           disabled={zoom <= 50}
-          className="flex h-5 w-5 items-center justify-center rounded hover:bg-[#1a1a1a] hover:text-[#eeeeee] transition-colors disabled:opacity-30"
+          className="flex h-5 w-5 items-center justify-center rounded hover:bg-[var(--border-subtle)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-30"
           title="Zoom out"
         >
           -
@@ -57,7 +57,7 @@ export default function EditorFooter({
         <button
           type="button"
           onClick={handleZoomReset}
-          className="px-1.5 py-0.5 rounded hover:bg-[#1a1a1a] hover:text-[#eeeeee] transition-colors cursor-pointer"
+          className="px-1.5 py-0.5 rounded hover:bg-[var(--border-subtle)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
           title="Click to reset zoom to 100%"
         >
           {zoom}%
@@ -67,7 +67,7 @@ export default function EditorFooter({
           type="button"
           onClick={handleZoomIn}
           disabled={zoom >= 200}
-          className="flex h-5 w-5 items-center justify-center rounded hover:bg-[#1a1a1a] hover:text-[#eeeeee] transition-colors disabled:opacity-30"
+          className="flex h-5 w-5 items-center justify-center rounded hover:bg-[var(--border-subtle)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-30"
           title="Zoom in"
         >
           +

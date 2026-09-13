@@ -1,22 +1,77 @@
 @import "tailwindcss";
 
 :root {
-  --background: #060606;
-  --foreground: #eeeeee;
+  /* Dark mode — default */
+  --bg-base: #060606;
+  --bg-surface: #0d0d0d;
+  --bg-elevated: #111111;
+  --border-subtle: #1a1a1a;
+  --border-default: #222222;
+  --text-primary: #eeeeee;
+  --text-muted: #aaaaaa;
+  --text-faint: #555555;
+
+  /* Green — identical in both modes */
+  --accent: #1fb622;
+  --accent-soft: #cff0c5;
+  --accent-bg: #0d1a0d;
+  --accent-border: #1a2e1a;
+
+  /* Page (document surface) */
+  --page-bg: #1a1a1a;
+  --page-text: #eeeeee;
+  --page-break: #333333;
+}
+
+[data-theme="light"] {
+  --bg-base: #f5f5f5;
+  --bg-surface: #ffffff;
+  --bg-elevated: #fafafa;
+  --border-subtle: #e5e5e5;
+  --border-default: #d4d4d4;
+  --text-primary: #111111;
+  --text-muted: #666666;
+  --text-faint: #aaaaaa;
+
+  /* Green — unchanged */
+  --accent: #1fb622;
+  --accent-soft: #cff0c5;
+  --accent-bg: #e8f7e8;
+  --accent-border: #b8e6b8;
+
+  /* Page (document surface) */
+  --page-bg: #ffffff;
+  --page-text: #1a1a1a;
+  --page-break: #e0e0e0;
 }
 
 body {
-  background-color: #060606;
-  color: #eeeeee;
+  background-color: var(--bg-base);
+  color: var(--text-primary);
   min-height: 100vh;
   margin: 0;
 }
 
-/* Tiptap Editor Typography (dark text on white page) */
+*,
+*::before,
+*::after {
+  transition:
+    background-color 200ms ease,
+    border-color 200ms ease,
+    color 200ms ease;
+}
+
+/* Exception: exclude transitions on editor area */
+.mergo-editor-body,
+.mergo-editor-body * {
+  transition: none;
+}
+
+/* Tiptap Editor Typography */
 .mergo-editor-body {
   font-family: "Times New Roman", Times, serif;
   font-size: 12pt;
-  color: #1a1a1a;
+  color: var(--page-text);
   background: transparent;
   min-height: 100%;
   padding: 0;
@@ -29,21 +84,21 @@ body {
   font-size: 2rem;
   font-weight: 700;
   margin: 1rem 0 0.5rem;
-  color: #111111;
+  color: var(--page-text);
 }
 
 .mergo-editor-body h2 {
   font-size: 1.5rem;
   font-weight: 600;
   margin: 0.875rem 0 0.4rem;
-  color: #111111;
+  color: var(--page-text);
 }
 
 .mergo-editor-body h3 {
   font-size: 1.25rem;
   font-weight: 600;
   margin: 0.75rem 0 0.35rem;
-  color: #111111;
+  color: var(--page-text);
 }
 
 .mergo-editor-body ul {
@@ -84,7 +139,8 @@ body {
 .page-container {
   width: 816px;
   min-height: 1056px;
-  background: #ffffff;
+  background: var(--page-bg);
+  color: var(--page-text);
   padding: 96px;
   box-sizing: border-box;
   position: relative;
@@ -100,8 +156,8 @@ body {
   left: 0;
   right: 0;
   height: 1px;
-  background: #cccccc;
-  border-top: 1px dashed #aaaaaa;
+  background: var(--page-break);
+  border-top: 1px dashed var(--border-default);
   pointer-events: none;
 }
 
@@ -113,6 +169,6 @@ body {
   left: 0;
   right: 0;
   overflow-y: auto;
-  background: #060606;
+  background: var(--bg-base);
   padding: 24px 0 48px;
 }

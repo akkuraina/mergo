@@ -28,7 +28,7 @@ export default function EditorToolbar({ editor }: EditorToolbarProps) {
 
   if (!editor) {
     return (
-      <div className="flex h-11 w-full items-center border-b border-[#1a1a1a] bg-[#111111] px-4" />
+      <div className="flex h-11 w-full items-center border-b border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-4" />
     );
   }
 
@@ -44,20 +44,20 @@ export default function EditorToolbar({ editor }: EditorToolbarProps) {
 
   // Determine current text color
   const currentColor =
-    editor.getAttributes("textStyle").color || "#eeeeee";
+    editor.getAttributes("textStyle").color || "var(--text-primary)";
 
   const buttonBase =
     "flex h-7 w-7 items-center justify-center rounded transition-colors text-xs font-mono select-none";
 
   return (
-    <div className="flex h-11 w-full items-center space-x-2 overflow-x-auto border-b border-[#1a1a1a] bg-[#111111] px-4 font-sans text-[#eeeeee]">
+    <div className="flex h-11 w-full items-center space-x-2 overflow-x-auto border-b border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-4 font-sans text-[var(--text-primary)]">
       {/* Group 1 — History */}
       <div className="flex items-center space-x-1">
         <button
           type="button"
           onClick={() => editor.chain().focus().undo().run()}
           disabled={!editor.can().undo()}
-          className={`${buttonBase} text-[#aaaaaa] hover:bg-[#1a1a1a] disabled:opacity-30 disabled:hover:bg-transparent`}
+          className={`${buttonBase} text-[var(--text-muted)] hover:bg-[var(--border-subtle)] disabled:opacity-30 disabled:hover:bg-transparent`}
           title="Undo (Ctrl+Z)"
         >
           ↩
@@ -66,14 +66,14 @@ export default function EditorToolbar({ editor }: EditorToolbarProps) {
           type="button"
           onClick={() => editor.chain().focus().redo().run()}
           disabled={!editor.can().redo()}
-          className={`${buttonBase} text-[#aaaaaa] hover:bg-[#1a1a1a] disabled:opacity-30 disabled:hover:bg-transparent`}
+          className={`${buttonBase} text-[var(--text-muted)] hover:bg-[var(--border-subtle)] disabled:opacity-30 disabled:hover:bg-transparent`}
           title="Redo (Ctrl+Y)"
         >
           ↪
         </button>
       </div>
 
-      <div className="h-5 w-[1px] bg-[#222222]" />
+      <div className="h-5 w-[1px] bg-[var(--border-default)]" />
 
       {/* Group 2 — Text Style Dropdown */}
       <div className="flex items-center">
@@ -81,12 +81,15 @@ export default function EditorToolbar({ editor }: EditorToolbarProps) {
           value={currentStyle}
           onChange={(e) => {
             const val = e.target.value;
-            if (val === "h1") editor.chain().focus().toggleHeading({ level: 1 }).run();
-            else if (val === "h2") editor.chain().focus().toggleHeading({ level: 2 }).run();
-            else if (val === "h3") editor.chain().focus().toggleHeading({ level: 3 }).run();
+            if (val === "h1")
+              editor.chain().focus().toggleHeading({ level: 1 }).run();
+            else if (val === "h2")
+              editor.chain().focus().toggleHeading({ level: 2 }).run();
+            else if (val === "h3")
+              editor.chain().focus().toggleHeading({ level: 3 }).run();
             else editor.chain().focus().setParagraph().run();
           }}
-          className="h-7 rounded bg-[#1a1a1a] px-2 text-xs font-sans text-[#eeeeee] outline-none hover:bg-[#222222]"
+          className="h-7 rounded bg-[var(--border-subtle)] px-2 text-xs font-sans text-[var(--text-primary)] outline-none hover:bg-[var(--border-default)]"
           title="Text style"
         >
           <option value="paragraph">Normal text</option>
@@ -96,7 +99,7 @@ export default function EditorToolbar({ editor }: EditorToolbarProps) {
         </select>
       </div>
 
-      <div className="h-5 w-[1px] bg-[#222222]" />
+      <div className="h-5 w-[1px] bg-[var(--border-default)]" />
 
       {/* Group 3 — Font Size */}
       <div className="flex items-center">
@@ -104,9 +107,13 @@ export default function EditorToolbar({ editor }: EditorToolbarProps) {
           value={currentFontSize}
           onChange={(e) => {
             const size = e.target.value;
-            editor.chain().focus().setMark("textStyle", { fontSize: `${size}pt` }).run();
+            editor
+              .chain()
+              .focus()
+              .setMark("textStyle", { fontSize: `${size}pt` })
+              .run();
           }}
-          className="h-7 rounded bg-[#1a1a1a] px-2 text-xs font-sans text-[#eeeeee] outline-none hover:bg-[#222222]"
+          className="h-7 rounded bg-[var(--border-subtle)] px-2 text-xs font-sans text-[var(--text-primary)] outline-none hover:bg-[var(--border-default)]"
           title="Font size"
         >
           {["10", "11", "12", "14", "16", "18", "24", "36"].map((s) => (
@@ -117,7 +124,7 @@ export default function EditorToolbar({ editor }: EditorToolbarProps) {
         </select>
       </div>
 
-      <div className="h-5 w-[1px] bg-[#222222]" />
+      <div className="h-5 w-[1px] bg-[var(--border-default)]" />
 
       {/* Group 4 — Inline Formatting */}
       <div className="flex items-center space-x-1">
@@ -127,7 +134,7 @@ export default function EditorToolbar({ editor }: EditorToolbarProps) {
           className={`${buttonBase} ${
             editor.isActive("bold")
               ? "bg-[#1fb622] text-[#060606] font-bold"
-              : "text-[#aaaaaa] hover:bg-[#1a1a1a]"
+              : "text-[var(--text-muted)] hover:bg-[var(--border-subtle)]"
           }`}
           title="Bold (Ctrl+B)"
         >
@@ -139,7 +146,7 @@ export default function EditorToolbar({ editor }: EditorToolbarProps) {
           className={`${buttonBase} ${
             editor.isActive("italic")
               ? "bg-[#1fb622] text-[#060606]"
-              : "text-[#aaaaaa] hover:bg-[#1a1a1a]"
+              : "text-[var(--text-muted)] hover:bg-[var(--border-subtle)]"
           }`}
           title="Italic (Ctrl+I)"
         >
@@ -151,7 +158,7 @@ export default function EditorToolbar({ editor }: EditorToolbarProps) {
           className={`${buttonBase} ${
             editor.isActive("underline")
               ? "bg-[#1fb622] text-[#060606]"
-              : "text-[#aaaaaa] hover:bg-[#1a1a1a]"
+              : "text-[var(--text-muted)] hover:bg-[var(--border-subtle)]"
           }`}
           title="Underline (Ctrl+U)"
         >
@@ -163,7 +170,7 @@ export default function EditorToolbar({ editor }: EditorToolbarProps) {
           className={`${buttonBase} ${
             editor.isActive("strike")
               ? "bg-[#1fb622] text-[#060606]"
-              : "text-[#aaaaaa] hover:bg-[#1a1a1a]"
+              : "text-[var(--text-muted)] hover:bg-[var(--border-subtle)]"
           }`}
           title="Strikethrough"
         >
@@ -171,13 +178,13 @@ export default function EditorToolbar({ editor }: EditorToolbarProps) {
         </button>
       </div>
 
-      <div className="h-5 w-[1px] bg-[#222222]" />
+      <div className="h-5 w-[1px] bg-[var(--border-default)]" />
 
       {/* Group 5 — Text Color */}
       <div className="relative flex items-center">
         <label
           htmlFor="text-color-input"
-          className={`${buttonBase} cursor-pointer flex-col justify-center text-[#aaaaaa] hover:bg-[#1a1a1a]`}
+          className={`${buttonBase} cursor-pointer flex-col justify-center text-[var(--text-muted)] hover:bg-[var(--border-subtle)]`}
           title="Text color"
         >
           <span className="font-bold text-[11px] leading-none">A</span>
@@ -189,7 +196,7 @@ export default function EditorToolbar({ editor }: EditorToolbarProps) {
         <input
           id="text-color-input"
           type="color"
-          value={currentColor}
+          value={currentColor.startsWith("#") ? currentColor : "#eeeeee"}
           onChange={(e) => {
             editor.chain().focus().setColor(e.target.value).run();
           }}
@@ -197,7 +204,7 @@ export default function EditorToolbar({ editor }: EditorToolbarProps) {
         />
       </div>
 
-      <div className="h-5 w-[1px] bg-[#222222]" />
+      <div className="h-5 w-[1px] bg-[var(--border-default)]" />
 
       {/* Group 6 — Alignment */}
       <div className="flex items-center space-x-1">
@@ -207,7 +214,7 @@ export default function EditorToolbar({ editor }: EditorToolbarProps) {
           className={`${buttonBase} ${
             editor.isActive({ textAlign: "left" })
               ? "bg-[#1fb622] text-[#060606]"
-              : "text-[#aaaaaa] hover:bg-[#1a1a1a]"
+              : "text-[var(--text-muted)] hover:bg-[var(--border-subtle)]"
           }`}
           title="Align left"
         >
@@ -219,7 +226,7 @@ export default function EditorToolbar({ editor }: EditorToolbarProps) {
           className={`${buttonBase} ${
             editor.isActive({ textAlign: "center" })
               ? "bg-[#1fb622] text-[#060606]"
-              : "text-[#aaaaaa] hover:bg-[#1a1a1a]"
+              : "text-[var(--text-muted)] hover:bg-[var(--border-subtle)]"
           }`}
           title="Align center"
         >
@@ -231,7 +238,7 @@ export default function EditorToolbar({ editor }: EditorToolbarProps) {
           className={`${buttonBase} ${
             editor.isActive({ textAlign: "right" })
               ? "bg-[#1fb622] text-[#060606]"
-              : "text-[#aaaaaa] hover:bg-[#1a1a1a]"
+              : "text-[var(--text-muted)] hover:bg-[var(--border-subtle)]"
           }`}
           title="Align right"
         >
@@ -243,7 +250,7 @@ export default function EditorToolbar({ editor }: EditorToolbarProps) {
           className={`${buttonBase} ${
             editor.isActive({ textAlign: "justify" })
               ? "bg-[#1fb622] text-[#060606]"
-              : "text-[#aaaaaa] hover:bg-[#1a1a1a]"
+              : "text-[var(--text-muted)] hover:bg-[var(--border-subtle)]"
           }`}
           title="Justify"
         >
@@ -251,7 +258,7 @@ export default function EditorToolbar({ editor }: EditorToolbarProps) {
         </button>
       </div>
 
-      <div className="h-5 w-[1px] bg-[#222222]" />
+      <div className="h-5 w-[1px] bg-[var(--border-default)]" />
 
       {/* Group 7 — Lists */}
       <div className="flex items-center space-x-1">
@@ -261,7 +268,7 @@ export default function EditorToolbar({ editor }: EditorToolbarProps) {
           className={`${buttonBase} ${
             editor.isActive("bulletList")
               ? "bg-[#1fb622] text-[#060606]"
-              : "text-[#aaaaaa] hover:bg-[#1a1a1a]"
+              : "text-[var(--text-muted)] hover:bg-[var(--border-subtle)]"
           }`}
           title="Bullet list"
         >
@@ -273,7 +280,7 @@ export default function EditorToolbar({ editor }: EditorToolbarProps) {
           className={`${buttonBase} ${
             editor.isActive("orderedList")
               ? "bg-[#1fb622] text-[#060606]"
-              : "text-[#aaaaaa] hover:bg-[#1a1a1a]"
+              : "text-[var(--text-muted)] hover:bg-[var(--border-subtle)]"
           }`}
           title="Numbered list"
         >
@@ -281,7 +288,7 @@ export default function EditorToolbar({ editor }: EditorToolbarProps) {
         </button>
       </div>
 
-      <div className="h-5 w-[1px] bg-[#222222]" />
+      <div className="h-5 w-[1px] bg-[var(--border-default)]" />
 
       {/* Group 8 — Indentation */}
       <div className="flex items-center space-x-1">
@@ -292,7 +299,7 @@ export default function EditorToolbar({ editor }: EditorToolbarProps) {
               editor.chain().focus().liftListItem("listItem").run();
             }
           }}
-          className={`${buttonBase} text-[#aaaaaa] hover:bg-[#1a1a1a]`}
+          className={`${buttonBase} text-[var(--text-muted)] hover:bg-[var(--border-subtle)]`}
           title="Outdent"
         >
           ⇤
@@ -304,7 +311,7 @@ export default function EditorToolbar({ editor }: EditorToolbarProps) {
               editor.chain().focus().sinkListItem("listItem").run();
             }
           }}
-          className={`${buttonBase} text-[#aaaaaa] hover:bg-[#1a1a1a]`}
+          className={`${buttonBase} text-[var(--text-muted)] hover:bg-[var(--border-subtle)]`}
           title="Indent"
         >
           ⇥

@@ -663,7 +663,7 @@ export default function Editor({
     <>
       {/* Preview Mode Banner */}
       {previewMode && previewVersion && (
-        <div className="fixed top-[92px] left-0 right-0 z-30 flex h-11 items-center justify-between border-b border-[#1fb622] bg-[#1a1a1a] px-6 text-[13px] font-sans text-[#eeeeee]">
+        <div className="fixed top-[92px] left-0 right-0 z-30 flex h-11 items-center justify-between border-b border-[#1fb622] bg-[var(--bg-elevated)] px-6 text-[13px] font-sans text-[var(--text-primary)]">
           <div>
             Viewing version from{" "}
             <span className="font-medium">
@@ -688,7 +688,7 @@ export default function Editor({
             <button
               type="button"
               onClick={onExitPreview}
-              className="text-[#aaaaaa] hover:text-white cursor-pointer"
+              className="text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
             >
               Back to current version
             </button>

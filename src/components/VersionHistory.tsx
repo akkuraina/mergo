@@ -136,21 +136,21 @@ export default function VersionHistory({
 
   return (
     <div
-      className={`fixed top-12 right-0 bottom-0 z-40 flex w-80 flex-col border-l border-[#1a1a1a] bg-[#0d0d0d] font-sans text-[#eeeeee] transition-transform duration-200 ease-in-out ${
+      className={`fixed top-12 right-0 bottom-0 z-40 flex w-80 flex-col border-l border-[var(--border-subtle)] bg-[var(--bg-surface)] font-sans text-[var(--text-primary)] transition-transform duration-200 ease-in-out ${
         open ? "translate-x-0" : "translate-x-full"
       }`}
       style={{ height: "calc(100vh - 48px)" }}
     >
       {/* Panel Header */}
-      <div className="border-b border-[#1a1a1a] p-4">
+      <div className="border-b border-[var(--border-subtle)] p-4">
         <div className="flex items-center justify-between pb-3">
-          <h2 className="text-sm font-semibold tracking-wide text-[#eeeeee]">
+          <h2 className="text-sm font-semibold tracking-wide text-[var(--text-primary)]">
             Version history
           </h2>
           <button
             type="button"
             onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded text-[#aaaaaa] hover:bg-[#1a1a1a] hover:text-white"
+            className="flex h-7 w-7 items-center justify-center rounded text-[var(--text-muted)] hover:bg-[var(--border-subtle)] hover:text-[var(--text-primary)]"
             title="Close"
           >
             ✕
@@ -166,7 +166,7 @@ export default function VersionHistory({
               onChange={(e) => setVersionLabel(e.target.value)}
               placeholder="Name this version (optional)..."
               autoFocus
-              className="w-full rounded border border-[#2a2a2a] bg-[#141414] px-3 py-2 text-xs text-[#eeeeee] outline-none placeholder:text-[#555555] focus:border-[#1fb622]"
+              className="w-full rounded border border-[var(--border-default)] bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-faint)] focus:border-[#1fb622]"
               onKeyDown={(e) => {
                 if (e.key === "Enter") handleSaveVersion();
                 if (e.key === "Escape") setShowNameInput(false);
@@ -184,7 +184,7 @@ export default function VersionHistory({
               <button
                 type="button"
                 onClick={() => setShowNameInput(false)}
-                className="rounded border border-[#333333] px-3 py-1.5 text-xs text-[#aaaaaa] hover:bg-[#1a1a1a]"
+                className="rounded border border-[var(--border-default)] px-3 py-1.5 text-xs text-[var(--text-muted)] hover:bg-[var(--border-subtle)]"
               >
                 Cancel
               </button>
@@ -204,17 +204,17 @@ export default function VersionHistory({
       {/* Version List */}
       <div className="flex-1 overflow-y-auto px-2 py-3 space-y-4">
         {loading && versions.length === 0 ? (
-          <div className="p-4 text-center text-xs text-[#666666]">
+          <div className="p-4 text-center text-xs text-[var(--text-faint)]">
             Loading versions...
           </div>
         ) : versions.length === 0 ? (
-          <div className="p-4 text-center text-xs text-[#666666]">
+          <div className="p-4 text-center text-xs text-[var(--text-faint)]">
             No versions saved yet. Click &quot;Save current version&quot; above to create one.
           </div>
         ) : (
           Object.entries(groupedVersions).map(([groupTitle, groupItems]) => (
             <div key={groupTitle} className="space-y-1">
-              <div className="px-2 py-1 text-[11px] font-medium tracking-wider text-[#666666] uppercase">
+              <div className="px-2 py-1 text-[11px] font-medium tracking-wider text-[var(--text-faint)] uppercase">
                 {groupTitle}
               </div>
               <div className="space-y-1">
@@ -228,8 +228,8 @@ export default function VersionHistory({
                       onClick={() => onPreview(v)}
                       className={`group relative flex cursor-pointer flex-col rounded-md px-3 py-2.5 transition-colors ${
                         isSelected
-                          ? "border-l-2 border-[#1fb622] bg-[#1a1a1a]"
-                          : "hover:bg-[#141414]"
+                          ? "border-l-2 border-[#1fb622] bg-[var(--bg-elevated)]"
+                          : "hover:bg-[var(--bg-elevated)]"
                       }`}
                     >
                       <div className="flex items-center justify-between">
@@ -237,10 +237,12 @@ export default function VersionHistory({
                           <span
                             className="h-2 w-2 rounded-full"
                             style={{
-                              backgroundColor: isCurrentUser ? "#1fb622" : "#aaaaaa",
+                              backgroundColor: isCurrentUser
+                                ? "#1fb622"
+                                : "var(--text-muted)",
                             }}
                           />
-                          <span className="text-xs font-medium text-[#eeeeee]">
+                          <span className="text-xs font-medium text-[var(--text-primary)]">
                             {formatTime(v.created_at)}
                           </span>
                         </div>
@@ -255,7 +257,7 @@ export default function VersionHistory({
                             onClick={() =>
                               setMenuOpenId((prev) => (prev === v.id ? null : v.id))
                             }
-                            className="hidden h-6 w-6 items-center justify-center rounded text-[#888888] hover:bg-[#222222] hover:text-white group-hover:flex"
+                            className="hidden h-6 w-6 items-center justify-center rounded text-[var(--text-muted)] hover:bg-[var(--border-subtle)] hover:text-[var(--text-primary)] group-hover:flex"
                             title="More options"
                           >
                             ⋮
@@ -264,7 +266,7 @@ export default function VersionHistory({
                           {menuOpenId === v.id && (
                             <div
                               ref={menuRef}
-                              className="absolute right-0 top-6 z-50 w-44 rounded-md border border-[#222222] bg-[#161616] py-1 shadow-lg text-xs"
+                              className="absolute right-0 top-6 z-50 w-44 rounded-md border border-[var(--border-default)] bg-[var(--bg-elevated)] py-1 shadow-lg text-xs"
                             >
                               <button
                                 type="button"
@@ -272,7 +274,7 @@ export default function VersionHistory({
                                   setMenuOpenId(null);
                                   onRestore(v.id);
                                 }}
-                                className="flex w-full px-3 py-1.5 text-left text-[#eeeeee] hover:bg-[#202020]"
+                                className="flex w-full px-3 py-1.5 text-left text-[var(--text-primary)] hover:bg-[var(--border-subtle)]"
                               >
                                 Restore this version
                               </button>
@@ -283,7 +285,7 @@ export default function VersionHistory({
                                   setRenamingId(v.id);
                                   setRenameLabel(v.label || "");
                                 }}
-                                className="flex w-full px-3 py-1.5 text-left text-[#aaaaaa] hover:bg-[#202020]"
+                                className="flex w-full px-3 py-1.5 text-left text-[var(--text-muted)] hover:bg-[var(--border-subtle)]"
                               >
                                 Name this version
                               </button>
@@ -293,7 +295,7 @@ export default function VersionHistory({
                       </div>
 
                       {/* Author */}
-                      <div className="mt-1 pl-4 text-[11px] text-[#888888]">
+                      <div className="mt-1 pl-4 text-[11px] text-[var(--text-muted)]">
                         {v.created_by_name}
                       </div>
 
@@ -309,13 +311,16 @@ export default function VersionHistory({
                             onChange={(e) => setRenameLabel(e.target.value)}
                             placeholder="Version name..."
                             autoFocus
-                            className="w-full rounded border border-[#2a2a2a] bg-[#111111] px-2 py-1 text-xs text-[#eeeeee] outline-none focus:border-[#1fb622]"
+                            className="w-full rounded border border-[var(--border-default)] bg-[var(--bg-base)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none focus:border-[#1fb622]"
                             onKeyDown={async (e) => {
                               if (e.key === "Enter") {
                                 setVersions((prev) =>
                                   prev.map((item) =>
                                     item.id === v.id
-                                      ? { ...item, label: renameLabel.trim() || null }
+                                      ? {
+                                          ...item,
+                                          label: renameLabel.trim() || null,
+                                        }
                                       : item
                                   )
                                 );

@@ -4,6 +4,7 @@ import { currentUser, clerkClient } from "@clerk/nextjs/server";
 import { UserButton } from "@clerk/nextjs";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import NewDocButton from "@/components/NewDocButton";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import type { Document } from "@/lib/types";
 
 type DashboardDoc = Document & {
@@ -95,9 +96,9 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
   const isTotalEmpty = owned.length === 0 && filteredCollab.length === 0;
 
   return (
-    <div className="min-h-screen bg-[#060606] text-[#eeeeee]">
+    <div className="min-h-screen bg-[var(--bg-base)] text-[var(--text-primary)]">
       {/* Top Bar */}
-      <header className="flex h-14 items-center justify-between border-b border-[#1a1a1a] px-6">
+      <header className="flex h-14 items-center justify-between border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] px-6">
         <div className="flex items-center space-x-6">
           <Link
             href="/dashboard"
@@ -107,9 +108,7 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
           </Link>
         </div>
         <div className="flex items-center space-x-4">
-          <span className="text-sm text-[#aaaaaa]">
-            {user.firstName || user.username || "User"}
-          </span>
+          <ThemeToggle />
           <UserButton
             appearance={{
               elements: {
@@ -117,21 +116,24 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
               },
             }}
           />
+          <span className="text-sm text-[var(--text-muted)]">
+            {user.firstName || user.username || "User"}
+          </span>
         </div>
       </header>
 
       {/* Main Content */}
       <main className="mx-auto max-w-5xl px-6 py-8">
         <div className="mb-8 flex items-center justify-between">
-          <h2 className="text-lg font-medium text-[#eeeeee]">
+          <h2 className="text-lg font-medium text-[var(--text-primary)]">
             Your Documents
           </h2>
           <NewDocButton />
         </div>
 
         {isTotalEmpty ? (
-          <div className="flex flex-col items-center justify-center rounded-lg border border-[#1a1a1a] bg-[#0d0d0d] p-12 text-center">
-            <p className="mb-4 text-sm text-[#aaaaaa]">
+          <div className="flex flex-col items-center justify-center rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-12 text-center">
+            <p className="mb-4 text-sm text-[var(--text-muted)]">
               No documents created yet.
             </p>
             <NewDocButton />
@@ -141,7 +143,7 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
             {/* Section 1 — My documents */}
             {owned.length > 0 && (
               <div>
-                <h3 className="mb-3 text-xs font-medium uppercase tracking-[0.08em] text-[#aaaaaa]">
+                <h3 className="mb-3 text-xs font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
                   My documents
                 </h3>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -149,17 +151,17 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
                     <Link
                       key={doc.id}
                       href={`/doc/${doc.id}`}
-                      className="group flex flex-col justify-between rounded-lg border border-[#1a1a1a] bg-[#0d0d0d] p-4 transition-colors hover:border-[#333333]"
+                      className="group flex flex-col justify-between rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 transition-colors hover:border-[var(--border-default)]"
                     >
                       <div>
-                        <h3 className="font-medium text-[#eeeeee] group-hover:text-white truncate">
+                        <h3 className="font-medium text-[var(--text-primary)] truncate">
                           {doc.title || "Untitled"}
                         </h3>
-                        <p className="mt-1 text-xs text-[#aaaaaa] font-mono truncate">
+                        <p className="mt-1 text-xs text-[var(--text-faint)] font-mono truncate">
                           {doc.id}
                         </p>
                       </div>
-                      <div className="mt-6 flex items-center justify-between text-xs text-[#aaaaaa]">
+                      <div className="mt-6 flex items-center justify-between text-xs text-[var(--text-muted)]">
                         <span>
                           {new Date(
                             doc.updated_at || doc.created_at
@@ -179,7 +181,7 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
             {/* Section 2 — Shared with you */}
             {filteredCollab.length > 0 && (
               <div>
-                <h3 className="mb-3 text-xs font-medium uppercase tracking-[0.08em] text-[#aaaaaa]">
+                <h3 className="mb-3 text-xs font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
                   Shared with you
                 </h3>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -187,14 +189,14 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
                     <Link
                       key={doc.id}
                       href={`/doc/${doc.id}`}
-                      className="group flex flex-col justify-between overflow-hidden rounded-lg border border-[#1a1a1a] bg-[#0d0d0d] transition-colors hover:border-[#333333]"
+                      className="group flex flex-col justify-between overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] transition-colors hover:border-[var(--border-default)]"
                     >
                       <div className="p-4">
                         <div className="flex items-start justify-between">
-                          <h3 className="font-medium text-[#eeeeee] group-hover:text-white truncate pr-2">
+                          <h3 className="font-medium text-[var(--text-primary)] truncate pr-2">
                             {doc.title || "Untitled"}
                           </h3>
-                          <span className="text-xs text-[#aaaaaa] whitespace-nowrap">
+                          <span className="text-xs text-[var(--text-muted)] whitespace-nowrap">
                             {new Date(
                               doc.updated_at || doc.created_at
                             ).toLocaleDateString(undefined, {
@@ -203,13 +205,13 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
                             })}
                           </span>
                         </div>
-                        <p className="mt-1 text-xs text-[#aaaaaa] font-mono truncate">
+                        <p className="mt-1 text-xs text-[var(--text-faint)] font-mono truncate">
                           {doc.id}
                         </p>
                       </div>
 
                       {/* Banner strip */}
-                      <div className="flex h-7 items-center border-t border-[#1a2e1a] bg-[#0d1a0d] px-4 font-mono text-xs text-[#1fb622]">
+                      <div className="flex h-7 items-center border-t border-[var(--accent-border)] bg-[var(--accent-bg)] px-4 font-mono text-xs text-[var(--accent)]">
                         <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-[#1fb622]" />
                         <span className="truncate">
                           Shared by{" "}

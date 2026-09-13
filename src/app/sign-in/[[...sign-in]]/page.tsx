@@ -2,7 +2,7 @@ import { SignIn } from "@clerk/nextjs";
 
 export default function SignInPage() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-[#060606] p-4">
+    <main className="flex min-h-screen flex-col items-center justify-center bg-[var(--bg-base)] p-4">
       <div className="w-full max-w-md flex flex-col items-center">
         <h1 className="text-2xl font-bold tracking-tight text-[#1fb622] mb-6">
           Mergo
@@ -10,18 +10,18 @@ export default function SignInPage() {
         <SignIn
           appearance={{
             elements: {
-              card: "bg-[#0d0d0d] border border-[#1a1a1a] shadow-none rounded-lg",
-              headerTitle: "text-[#eeeeee]",
-              headerSubtitle: "text-[#aaaaaa]",
+              card: "bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-none rounded-lg",
+              headerTitle: "text-[var(--text-primary)]",
+              headerSubtitle: "text-[var(--text-muted)]",
               socialButtonsBlockButton:
-                "bg-[#141414] border border-[#1a1a1a] text-[#eeeeee] hover:bg-[#1a1a1a]",
+                "bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] hover:bg-[var(--border-subtle)]",
               formButtonPrimary:
                 "bg-[#1fb622] hover:bg-[#cff0c5] hover:text-[#060606] text-[#060606] font-medium transition-colors rounded-lg",
               formFieldInput:
-                "bg-[#060606] border border-[#1a1a1a] text-[#eeeeee] rounded-lg focus:border-[#1fb622]",
-              formFieldLabel: "text-[#aaaaaa]",
+                "bg-[var(--bg-base)] border border-[var(--border-subtle)] text-[var(--text-primary)] rounded-lg focus:border-[#1fb622]",
+              formFieldLabel: "text-[var(--text-muted)]",
               footerActionLink: "text-[#1fb622] hover:text-[#cff0c5]",
-              identityPreviewText: "text-[#eeeeee]",
+              identityPreviewText: "text-[var(--text-primary)]",
               identityPreviewEditButton: "text-[#1fb622] hover:text-[#cff0c5]",
             },
           }}

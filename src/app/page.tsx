@@ -5,12 +5,12 @@ export default async function HomePage(): Promise<React.JSX.Element> {
   const { userId } = await auth();
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-[#060606] px-4 text-center">
+    <main className="flex min-h-screen flex-col items-center justify-center bg-[var(--bg-base)] px-4 text-center">
       <div className="max-w-md w-full flex flex-col items-center space-y-6">
         <h1 className="text-4xl font-bold tracking-tight text-[#1fb622]">
           Mergo
         </h1>
-        <p className="text-sm text-[#aaaaaa]">
+        <p className="text-sm text-[var(--text-muted)]">
           Real-time collaborative text editor. Fast, minimal, and lightweight.
         </p>
         <div className="pt-2">

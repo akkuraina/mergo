@@ -2,11 +2,13 @@ import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
+import { ThemeProvider } from "@/components/ThemeProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Mergo — Real-time Collaborative Text Editor",
-  description: "A fast, real-time collaborative text editor built with Next.js, Clerk, and Supabase.",
+  description:
+    "A fast, real-time collaborative text editor built with Next.js, Clerk, and Supabase.",
 };
 
 export default function RootLayout({
@@ -29,9 +31,34 @@ export default function RootLayout({
         },
       }}
     >
-      <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`}>
-        <body className={`${GeistSans.className} bg-[#060606] text-[#eeeeee] min-h-screen antialiased`}>
-          {children}
+      <html
+        lang="en"
+        suppressHydrationWarning
+        className={`${GeistSans.variable} ${GeistMono.variable}`}
+      >
+        <head>
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `
+                (function() {
+                  try {
+                    var stored = localStorage.getItem('mergo-theme');
+                    if (stored === 'light' || stored === 'dark') {
+                      document.documentElement.setAttribute('data-theme', stored);
+                    } else {
+                      var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                      document.documentElement.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
+                    }
+                  } catch(e) {}
+                })();
+              `,
+            }}
+          />
+        </head>
+        <body
+          className={`${GeistSans.className} bg-[var(--bg-base)] text-[var(--text-primary)] min-h-screen antialiased`}
+        >
+          <ThemeProvider>{children}</ThemeProvider>
         </body>
       </html>
     </ClerkProvider>
