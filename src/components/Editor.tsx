@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { createClient, type RealtimeChannel } from "@supabase/supabase-js";
 import { useEditor, EditorContent, type Editor as TiptapEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import Underline from "@tiptap/extension-underline";
 import TextAlign from "@tiptap/extension-text-align";
 import { TextStyle } from "@tiptap/extension-text-style";
 import Color from "@tiptap/extension-color";
+import FontFamily from "@tiptap/extension-font-family";
 import { FontSize } from "@/lib/tiptap/FontSize";
+import { HorizontalRuler, VerticalRuler, type DocMargins } from "./DocRuler";
 import {
   createDocument,
   localInsert,
@@ -206,6 +207,24 @@ export default function Editor({
   const [text, setText] = useState<string>(initialText);
   const [pageBreaks, setPageBreaks] = useState<number[]>([]);
 
+  // Interactive Document Margins state
+  const [margins, setMargins] = useState<DocMargins>({
+    top: 96,
+    bottom: 96,
+    left: 96,
+    right: 96,
+  });
+
+  const [guideline, setGuideline] = useState<{
+    type: "vertical" | "horizontal";
+    pos: number;
+    label?: string;
+  } | null>(null);
+
+  const handleMarginChange = useCallback((newMargins: Partial<DocMargins>) => {
+    setMargins((prev) => ({ ...prev, ...newMargins }));
+  }, []);
+
   const channelRef = useRef<RealtimeChannel | null>(null);
   const isRemoteUpdateRef = useRef<boolean>(false);
   const snapshotTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -229,27 +248,30 @@ export default function Editor({
   const pendingOpsRef = useRef<RGAOp[]>([]);
 
   // ---------------------------------------------------------------------------
-  // Persist a single op to Supabase (with auto-versioning every 50 ops)
+  // Persist operations to Supabase in batches (with auto-versioning every 50 ops)
   // ---------------------------------------------------------------------------
-  const persistOp = async (op: RGAOp): Promise<void> => {
-    if (previewModeRef.current) return;
+  const persistOps = async (ops: RGAOp[]): Promise<void> => {
+    if (previewModeRef.current || !ops || ops.length === 0) return;
     try {
-      await fetch(`/api/documents/${docId}/ops`, {
+      const res = await fetch(`/api/documents/${docId}/ops`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ op, siteId: siteIdRef.current }),
+        body: JSON.stringify({ ops, siteId: siteIdRef.current }),
       });
 
-      opCountRef.current++;
-      if (opCountRef.current % 50 === 0) {
+      if (!res.ok) return;
+
+      opCountRef.current += ops.length;
+      if (opCountRef.current >= 50) {
+        opCountRef.current = 0;
         fetch(`/api/documents/${docId}/versions`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ label: null }),
-        }).catch((err) => console.error("Auto-version save failed:", err));
+        }).catch(() => {});
       }
-    } catch (err) {
-      console.error("Failed to persist operation:", err);
+    } catch {
+      // Ignored if cancelled during navigation or reload
     }
   };
 
@@ -285,11 +307,11 @@ export default function Editor({
     editable: !previewMode,
     extensions: [
       StarterKit,
-      Underline,
       TextAlign.configure({ types: ["heading", "paragraph"] }),
       TextStyle,
       Color,
       FontSize,
+      FontFamily,
     ],
     content: initialRichContentRef.current || (initialText.length > 0 ? initialText : undefined),
     editorProps: {
@@ -357,7 +379,9 @@ export default function Editor({
       // Update CRDT state
       docRef.current = currentDoc;
 
-      ops.forEach((op) => persistOp(op));
+      if (ops.length > 0) {
+        persistOps(ops);
+      }
     },
   });
 
@@ -705,22 +729,91 @@ export default function Editor({
           transition: "right 200ms ease, top 150ms ease",
         }}
       >
+        {/* Document Workspace with Margin Rulers */}
         <div
-          ref={pageContainerRef}
-          className="page-container"
+          className="mx-auto flex flex-col items-center"
           style={{
             transform: `scale(${zoom / 100})`,
             transformOrigin: "top center",
+            width: "fit-content",
+            marginTop: "12px",
+            paddingBottom: "48px",
           }}
         >
-          {pageBreaks.map((topPos) => (
+          {/* Top Ruler Row (corner piece + horizontal ruler) */}
+          <div className="flex items-end mb-1 select-none">
             <div
-              key={topPos}
-              className="page-break-line"
-              style={{ top: `${topPos}px` }}
+              className="w-[22px] h-[22px] border border-r-0 border-b-0 border-[var(--border-subtle)] bg-[var(--bg-elevated)] mr-1 rounded-tl-sm opacity-80"
+              title="Ruler (inches)"
             />
-          ))}
-          <EditorContent editor={editor} />
+            <HorizontalRuler
+              margins={margins}
+              onMarginChange={handleMarginChange}
+              zoom={zoom}
+              onDragStateChange={(dragging, pos, label) => {
+                if (dragging && pos !== null && pos !== undefined) {
+                  setGuideline({ type: "vertical", pos, label });
+                } else {
+                  setGuideline(null);
+                }
+              }}
+            />
+          </div>
+
+          {/* Body Row (Left Vertical Ruler + Document Page Container) */}
+          <div className="flex items-start">
+            {/* Left Vertical Ruler */}
+            <div className="mr-1 select-none">
+              <VerticalRuler
+                margins={margins}
+                onMarginChange={handleMarginChange}
+                pageHeight={pageContainerRef.current?.scrollHeight || 1056}
+                zoom={zoom}
+                onDragStateChange={(dragging, pos, label) => {
+                  if (dragging && pos !== null && pos !== undefined) {
+                    setGuideline({ type: "horizontal", pos, label });
+                  } else {
+                    setGuideline(null);
+                  }
+                }}
+              />
+            </div>
+
+            {/* Document Page Container */}
+            <div
+              ref={pageContainerRef}
+              className="page-container !my-0 !mx-0 relative"
+              style={{
+                paddingTop: `${margins.top}px`,
+                paddingBottom: `${margins.bottom}px`,
+                paddingLeft: `${margins.left}px`,
+                paddingRight: `${margins.right}px`,
+              }}
+            >
+              {/* Active Margin Drag Guideline */}
+              {guideline && guideline.type === "vertical" && (
+                <div
+                  className="absolute top-0 bottom-0 pointer-events-none z-30 border-l border-dashed border-[#1fb622]/80 shadow-[0_0_8px_rgba(31,182,34,0.4)]"
+                  style={{ left: `${guideline.pos}px` }}
+                />
+              )}
+              {guideline && guideline.type === "horizontal" && (
+                <div
+                  className="absolute left-0 right-0 pointer-events-none z-30 border-t border-dashed border-[#1fb622]/80 shadow-[0_0_8px_rgba(31,182,34,0.4)]"
+                  style={{ top: `${guideline.pos}px` }}
+                />
+              )}
+
+              {pageBreaks.map((topPos) => (
+                <div
+                  key={topPos}
+                  className="page-break-line"
+                  style={{ top: `${topPos}px` }}
+                />
+              ))}
+              <EditorContent editor={editor} />
+            </div>
+          </div>
         </div>
       </div>
     </>

@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto:ital,wght@0,400;0,500;0,700;1,400&family=Merriweather:ital,wght@0,400;0,700;1,400&display=swap');
 @import "tailwindcss";
 
 :root {
@@ -171,4 +172,49 @@ body {
   overflow-y: auto;
   background: var(--bg-base);
   padding: 24px 0 48px;
+}
+
+/* ==========================================================================
+   Clerk Popover & UserButton Styling Overrides
+   ========================================================================== */
+.cl-userButtonPopoverCard {
+  background-color: #0d0d0d !important;
+  border: 1px solid #1a1a1a !important;
+  color: #eeeeee !important;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6) !important;
+  border-radius: 12px !important;
+}
+
+.cl-userButtonPopoverActionButton {
+  color: #eeeeee !important;
+  transition: background-color 150ms ease, color 150ms ease !important;
+  border-radius: 8px !important;
+}
+
+.cl-userButtonPopoverActionButton:hover {
+  background-color: #1a1a1a !important;
+  color: #ffffff !important;
+}
+
+.cl-userButtonPopoverActionButtonText {
+  color: #eeeeee !important;
+  font-weight: 500 !important;
+}
+
+.cl-userButtonPopoverActionButtonIcon {
+  color: #aaaaaa !important;
+}
+
+.cl-userPreviewMainIdentifier {
+  color: #ffffff !important;
+  font-weight: 600 !important;
+}
+
+.cl-userPreviewSecondaryIdentifier {
+  color: #aaaaaa !important;
+}
+
+.cl-userButtonPopoverFooter {
+  border-top: 1px solid #1a1a1a !important;
+  background-color: #0d0d0d !important;
 }

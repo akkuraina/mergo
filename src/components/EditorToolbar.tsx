@@ -38,6 +38,10 @@ export default function EditorToolbar({ editor }: EditorToolbarProps) {
   else if (editor.isActive("heading", { level: 2 })) currentStyle = "h2";
   else if (editor.isActive("heading", { level: 3 })) currentStyle = "h3";
 
+  // Determine current font family
+  const currentFontFamily =
+    editor.getAttributes("textStyle").fontFamily || "default";
+
   // Determine current font size
   const currentFontSize =
     editor.getAttributes("textStyle").fontSize?.replace("pt", "") || "12";
@@ -89,13 +93,46 @@ export default function EditorToolbar({ editor }: EditorToolbarProps) {
               editor.chain().focus().toggleHeading({ level: 3 }).run();
             else editor.chain().focus().setParagraph().run();
           }}
-          className="h-7 rounded bg-[var(--border-subtle)] px-2 text-xs font-sans text-[var(--text-primary)] outline-none hover:bg-[var(--border-default)]"
+          className="h-7 rounded bg-[var(--border-subtle)] px-2 text-xs font-sans text-[var(--text-primary)] outline-none hover:bg-[var(--border-default)] cursor-pointer"
           title="Text style"
         >
           <option value="paragraph">Normal text</option>
           <option value="h1">Heading 1</option>
           <option value="h2">Heading 2</option>
           <option value="h3">Heading 3</option>
+        </select>
+      </div>
+
+      <div className="h-5 w-[1px] bg-[var(--border-default)]" />
+
+      {/* Group 2.5 — Font Family Dropdown */}
+      <div className="flex items-center">
+        <select
+          value={currentFontFamily}
+          onChange={(e) => {
+            const font = e.target.value;
+            if (font === "default") {
+              editor.chain().focus().unsetFontFamily().run();
+            } else {
+              editor.chain().focus().setFontFamily(font).run();
+            }
+          }}
+          className="h-7 rounded bg-[var(--border-subtle)] px-2 text-xs text-[var(--text-primary)] outline-none hover:bg-[var(--border-default)] cursor-pointer max-w-[135px]"
+          title="Font family"
+        >
+          <option value="default" style={{ fontFamily: "serif" }}>Times New Roman (Default)</option>
+          <option value="Arial, sans-serif" style={{ fontFamily: "Arial, sans-serif" }}>Arial</option>
+          <option value="Roboto, sans-serif" style={{ fontFamily: "Roboto, sans-serif" }}>Roboto</option>
+          <option value="Inter, sans-serif" style={{ fontFamily: "Inter, sans-serif" }}>Inter</option>
+          <option value="var(--font-geist-sans), sans-serif" style={{ fontFamily: "sans-serif" }}>Geist Sans</option>
+          <option value="Playfair Display, serif" style={{ fontFamily: "Playfair Display, serif" }}>Playfair Display</option>
+          <option value="Georgia, serif" style={{ fontFamily: "Georgia, serif" }}>Georgia</option>
+          <option value="Merriweather, serif" style={{ fontFamily: "Merriweather, serif" }}>Merriweather</option>
+          <option value="Garamond, serif" style={{ fontFamily: "Garamond, serif" }}>Garamond</option>
+          <option value="Courier New, monospace" style={{ fontFamily: "Courier New, monospace" }}>Courier New</option>
+          <option value="Trebuchet MS, sans-serif" style={{ fontFamily: "Trebuchet MS, sans-serif" }}>Trebuchet MS</option>
+          <option value="Verdana, sans-serif" style={{ fontFamily: "Verdana, sans-serif" }}>Verdana</option>
+          <option value="Comic Sans MS, cursive" style={{ fontFamily: "Comic Sans MS, cursive" }}>Comic Sans MS</option>
         </select>
       </div>
 

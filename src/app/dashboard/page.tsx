@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentUser, clerkClient } from "@clerk/nextjs/server";
 import { UserButton } from "@clerk/nextjs";
+import { dark } from "@clerk/themes";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import NewDocButton from "@/components/NewDocButton";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -112,8 +113,29 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
           <ThemeToggle />
           <UserButton
             appearance={{
+              theme: dark,
+              variables: {
+                colorBackground: "#0d0d0d",
+                colorForeground: "#eeeeee",
+                colorMutedForeground: "#aaaaaa",
+                colorPrimary: "#1fb622",
+              },
               elements: {
                 userButtonAvatarBox: "h-8 w-8",
+                userButtonPopoverCard:
+                  "!bg-[#0d0d0d] !border !border-[#1a1a1a] !shadow-2xl !text-[#eeeeee]",
+                userButtonPopoverActionButton:
+                  "!text-[#eeeeee] hover:!bg-[#1a1a1a] hover:!text-white transition-colors",
+                userButtonPopoverActionButtonText:
+                  "!text-[#eeeeee] font-medium hover:!text-white",
+                userButtonPopoverActionButtonIcon:
+                  "!text-[#aaaaaa] hover:!text-white",
+                userButtonPopoverFooter:
+                  "!border-t !border-[#1a1a1a] !bg-[#0d0d0d]",
+                userPreviewMainIdentifier:
+                  "!text-[#eeeeee] font-semibold",
+                userPreviewSecondaryIdentifier:
+                  "!text-[#aaaaaa]",
               },
             }}
           />
