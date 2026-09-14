@@ -93,6 +93,13 @@ export async function POST(
     const snapshot_text = getVisibleText(doc);
     const op_cursor = lastOpId;
 
+    // Fetch current tiptap_content from documents table
+    const { data: currentDoc } = await supabase
+      .from("documents")
+      .select("tiptap_content")
+      .eq("id", id)
+      .single();
+
     const userName =
       user.fullName ||
       `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() ||
@@ -106,6 +113,7 @@ export async function POST(
         doc_id: id,
         label,
         snapshot_text,
+        tiptap_content: currentDoc?.tiptap_content ?? null,
         created_by: user.id,
         created_by_name: userName,
         created_by_image: userImage,

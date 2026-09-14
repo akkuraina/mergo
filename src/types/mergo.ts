@@ -3,6 +3,7 @@ export type VersionRow = {
   doc_id: string;
   label: string | null;
   snapshot_text: string;
+  tiptap_content?: Record<string, unknown> | null;
   created_by: string;
   created_by_name: string;
   created_by_image: string | null;

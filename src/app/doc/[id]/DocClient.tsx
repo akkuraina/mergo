@@ -15,6 +15,7 @@ interface DocClientProps {
   docId: string;
   initialTitle: string;
   initialOps: Operation[];
+  initialTiptapContent?: Record<string, unknown> | null;
   userId: string;
   userName: string;
   userImageUrl: string;
@@ -25,6 +26,7 @@ export default function DocClient({
   docId,
   initialTitle,
   initialOps,
+  initialTiptapContent,
   userId,
   userName,
   userImageUrl,
@@ -73,7 +75,7 @@ export default function DocClient({
               })
             : "selected version");
         showToast(`Document restored to ${labelOrDate}`);
-        // Reload to fetch full new operation log and initialize CRDT cleanly
+        // Reload to fetch fresh tiptap_content from database
         setTimeout(() => {
           window.location.reload();
         }, 600);
@@ -114,6 +116,7 @@ export default function DocClient({
         docId={docId}
         initialOps={initialOps}
         initialTitle={initialTitle}
+        initialTiptapContent={initialTiptapContent}
         userId={userId}
         userName={userName}
         userImageUrl={userImageUrl}

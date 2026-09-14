@@ -84,6 +84,7 @@ export default async function DocPage({
       docId={id}
       initialTitle={document.title || "Untitled"}
       initialOps={initialOps}
+      initialTiptapContent={document.tiptap_content ?? null}
       userId={userId}
       userName={userName}
       userImageUrl={userImageUrl}

@@ -3,6 +3,7 @@ import type { RGAOp } from "./crdt/rga";
 export interface Document {
   id: string;
   title: string;
+  tiptap_content?: Record<string, unknown> | null;
   created_by: string;
   created_at: string;
   updated_at: string;
