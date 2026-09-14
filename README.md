@@ -59,14 +59,14 @@ Mergo is a Google Docs-inspired, production-grade collaborative rich text editor
 
 ```mermaid
 flowchart TD
-    subgraph Client A ["Client A (Browser)"]
+    subgraph ClientA ["Client A (Browser)"]
         UI_A["Tiptap Editor UI"]
         RGA_A["Local RGA CRDT Engine"]
         DIFF_A["Two-Pointer Diff Engine"]
         QUEUE_A["Causal Pending Queue"]
     end
 
-    subgraph Client B ["Client B (Browser)"]
+    subgraph ClientB ["Client B (Browser)"]
         UI_B["Tiptap Editor UI"]
         RGA_B["Local RGA CRDT Engine"]
         DIFF_B["Two-Pointer Diff Engine"]
@@ -75,21 +75,21 @@ flowchart TD
 
     subgraph Supabase ["Supabase Backend Infrastructure"]
         RT["Realtime Channel (WebSockets)"]
-        DB[(PostgreSQL Database)]
+        DB[("PostgreSQL Database")]
         OPS_TABLE["operations (Append-only Op Log)"]
         DOCS_TABLE["documents (tiptap_content & metadata)"]
         VERSIONS_TABLE["versions (rich snapshots)"]
     end
 
-    UI_A -->|Key Input| DIFF_A
-    DIFF_A -->|localInsert / localDelete| RGA_A
-    RGA_A -->|Batch POST /ops| OPS_TABLE
-    UI_A -->|Debounced PATCH /content (1s)| DOCS_TABLE
+    UI_A -->|"Key Input"| DIFF_A
+    DIFF_A -->|"localInsert / localDelete"| RGA_A
+    RGA_A -->|"Batch POST /ops"| OPS_TABLE
+    UI_A -->|"Debounced PATCH /content (1s)"| DOCS_TABLE
 
-    OPS_TABLE -->|WAL Broadcast| RT
-    RT -->|postgres_changes| QUEUE_B
-    QUEUE_B -->|applyOp & drainPending| RGA_B
-    RGA_B -->|flushToEditor| UI_B
+    OPS_TABLE -->|"WAL Broadcast"| RT
+    RT -->|"postgres_changes"| QUEUE_B
+    QUEUE_B -->|"applyOp & drainPending"| RGA_B
+    RGA_B -->|"flushToEditor"| UI_B
 ```
 
 ---
@@ -114,12 +114,12 @@ Mergo adopts an architectural pattern similar to **Notion** and modern distribut
 
 ```mermaid
 graph LR
-    subgraph DocPage ["src/app/doc/[id]/page.tsx (Server Component)"]
+    subgraph DocPage ["src/app/doc/id/page.tsx (Server Component)"]
         FetchDoc["Fetch document & tiptap_content"]
         FetchOps["Fetch operation log (clock ASC)"]
     end
 
-    subgraph DocClient ["src/app/doc/[id]/DocClient.tsx"]
+    subgraph DocClient ["src/app/doc/id/DocClient.tsx"]
         CollabBar["CollabBar.tsx"]
         EditorToolbar["EditorToolbar.tsx"]
         DocRuler["DocRuler.tsx (Horizontal & Vertical)"]
@@ -307,13 +307,13 @@ sequenceDiagram
     EditorA->>EditorA: computeDiff(oldText, newText)
     EditorA->>RGAA: localInsert(doc, 0, 'H')
     RGAA-->>EditorA: [updatedDoc, InsertOp]
-    EditorA->>API: Batch POST /api/documents/[id]/ops
-    EditorA->>API: Debounced PATCH /api/documents/[id]/content (1s)
+    EditorA->>API: Batch POST /api/documents/id/ops
+    EditorA->>API: Debounced PATCH /api/documents/id/content
     
     API-->>EditorB: Realtime broadcast (INSERT op)
     EditorB->>RGAB: applyOp(doc, incomingOp)
     RGAB-->>EditorB: updatedDoc
-    EditorB->>EditorB: flushToEditor() (Diff check)
+    EditorB->>EditorB: flushToEditor (Diff check)
     EditorB->>Bob: Renders 'H' with formatting intact
 ```
 
@@ -323,14 +323,14 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    A[Incoming Realtime Op] --> B{applyOp}
-    B -->|Success| C[drainPending]
-    B -->|Predecessor Not Found| D[Push to pendingOpsRef]
-    C --> E{Any pending ops unblocked?}
-    E -->|Yes| F[Apply pending op & repeat loop]
-    E -->|No| G[flushToEditor]
+    A["Incoming Realtime Op"] --> B{"applyOp"}
+    B -->|"Success"| C["drainPending"]
+    B -->|"Predecessor Not Found"| D["Push to pendingOpsRef"]
+    C --> E{"Any pending ops unblocked?"}
+    E -->|"Yes"| F["Apply pending op & repeat loop"]
+    E -->|"No"| G["flushToEditor"]
     F --> E
-    D --> H[Wait for next successful op]
+    D --> H["Wait for next successful op"]
 ```
 
 ---
@@ -340,18 +340,18 @@ flowchart TD
 ```mermaid
 flowchart TD
     subgraph LocalEdit ["On Local Keystroke"]
-        K[Keystroke in Tiptap] --> D[computeDiff]
-        D --> RGA_OP[Generate RGA Op]
-        RGA_OP --> BATCH[Batch to /api/documents/id/ops]
-        K --> DEBOUNCE[Debounce Timer 1000ms]
-        DEBOUNCE --> PATCH_JSON[PATCH /api/documents/id/content]
+        K["Keystroke in Tiptap"] --> D["computeDiff"]
+        D --> RGA_OP["Generate RGA Op"]
+        RGA_OP --> BATCH["Batch to /api/documents/id/ops"]
+        K --> DEBOUNCE["Debounce Timer 1000ms"]
+        DEBOUNCE --> PATCH_JSON["PATCH /api/documents/id/content"]
     end
 
     subgraph PageLoad ["On Page Load / Reload"]
-        LOAD_DB[Fetch document from Supabase]
-        LOAD_DB --> HAS_JSON{tiptap_content exists?}
-        HAS_JSON -->|Yes| SET_JSON[editor.commands.setContent with tiptap_content]
-        HAS_JSON -->|No / Legacy| REPLAY_RGA[Replay ops log through RGA for plain text]
+        LOAD_DB["Fetch document from Supabase"]
+        LOAD_DB --> HAS_JSON{"tiptap_content exists?"}
+        HAS_JSON -->|"Yes"| SET_JSON["editor.commands.setContent with tiptap_content"]
+        HAS_JSON -->|"No / Legacy"| REPLAY_RGA["Replay ops log through RGA for plain text"]
     end
 ```
 
@@ -364,23 +364,23 @@ sequenceDiagram
     autonumber
     actor User as User
     participant VH as VersionHistory.tsx
-    participant API_V as /api/documents/[id]/versions
-    participant API_R as /api/documents/[id]/versions/[id]/restore
+    participant API_V as /api/documents/id/versions
+    participant API_R as /api/documents/id/versions/restore
     participant DB as PostgreSQL Database
     participant Ed as Editor.tsx
 
     Note over User,DB: Creating a Version Snapshot
-    User->>VH: Clicks 'Save current version' (optional name)
-    VH->>API_V: POST /api/documents/[id]/versions
-    API_V->>DB: Fetch active tiptap_content & replay snapshot_text
-    API_V->>DB: INSERT into versions (snapshot_text, tiptap_content, user metadata)
+    User->>VH: Clicks 'Save current version'
+    VH->>API_V: POST /api/documents/id/versions
+    API_V->>DB: Fetch active tiptap_content & snapshot_text
+    API_V->>DB: INSERT into versions (snapshot_text, tiptap_content)
     DB-->>VH: Returns new VersionRow
 
     Note over User,Ed: Previewing & Restoring
     User->>VH: Clicks version to preview
-    VH->>Ed: Loads previewVersion.tiptap_content in read-only mode
+    VH->>Ed: Loads previewVersion.tiptap_content (read-only)
     User->>VH: Clicks 'Restore this version'
-    VH->>API_R: POST .../restore
+    VH->>API_R: POST /api/documents/id/versions/restore
     API_R->>DB: UPDATE documents.tiptap_content = targetVersion.tiptap_content
     API_R->>DB: INSERT new restore snapshot into versions
     API_R-->>VH: Success { ok: true }
@@ -616,8 +616,3 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) in your browser to view Mergo.
 
----
-
-## 📄 License
-
-This project is licensed under the MIT License.
