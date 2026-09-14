@@ -132,63 +132,7 @@ export default function Editor({
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isDirtyRef = useRef<boolean>(false);
 
-  // Replay persisted ops exactly once on mount (for plaintext CRDT state).
-  const opsReplayedRef = useRef<boolean>(false);
-
-  if (!opsReplayedRef.current) {
-    opsReplayedRef.current = true;
-
-    // Parse every row up front, skipping any that can't be deserialised.
-    const parsedOps: RGAOp[] = [];
-    for (const row of initialOps) {
-      if (row.op_type === "snapshot") continue;
-      try {
-        const op: RGAOp =
-          typeof row.payload === "string"
-            ? deserializeOp(row.payload)
-            : deserializeOp(JSON.stringify(row.payload));
-        if (op && (op.type === "insert" || op.type === "delete")) {
-          parsedOps.push(op);
-        }
-      } catch (err) {
-        console.error("Error parsing op on mount:", err);
-      }
-    }
-
-    // Apply with a pending queue: keep looping until no progress is made.
-    let doc = docRef.current;
-    let pending = parsedOps;
-    let progress = true;
-    while (progress && pending.length > 0) {
-      progress = false;
-      const stillPending: RGAOp[] = [];
-      for (const op of pending) {
-        try {
-          doc = applyOp(doc, op);
-          progress = true; // at least one op succeeded this pass
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          if (msg.startsWith("Predecessor not found")) {
-            stillPending.push(op); // retry next pass
-          } else {
-            console.error("Error replaying op on mount (permanent):", err);
-          }
-        }
-      }
-      pending = stillPending;
-    }
-
-    if (pending.length > 0) {
-      console.warn(
-        `[mergo] ${pending.length} op(s) could not be replayed — causal chain broken`
-      );
-    }
-
-    docRef.current = doc;
-  }
-
-  const initialText = getVisibleText(docRef.current);
-  const [text, setText] = useState<string>(initialText);
+  const [text, setText] = useState<string>("");
   const [pageBreaks, setPageBreaks] = useState<number[]>([]);
 
   // Interactive Document Margins state
@@ -360,7 +304,7 @@ export default function Editor({
       FontSize,
       FontFamily,
     ],
-    content: initialTiptapContent || (initialText.length > 0 ? initialText : undefined),
+    content: initialTiptapContent || undefined,
     editorProps: {
       attributes: {
         class: "mergo-editor-body outline-none",
@@ -425,21 +369,55 @@ export default function Editor({
   }, [editor, onEditorReady]);
 
   // ---------------------------------------------------------------------------
-  // Load initial content into Tiptap on initial mount
+  // ---------------------------------------------------------------------------
+  // Load initial content into Tiptap on mount (JSON first, plaintext fallback)
   // ---------------------------------------------------------------------------
   const initialMountLoadedRef = useRef<boolean>(false);
+
   useEffect(() => {
-    if (!editor || initialMountLoadedRef.current) return;
-    initialMountLoadedRef.current = true;
-    if (initialTiptapContent) {
-      editor.commands.setContent(initialTiptapContent, { emitUpdate: false });
-    } else {
-      const visible = getVisibleText(docRef.current);
-      if (visible) {
-        editor.commands.setContent(visible, { emitUpdate: false });
+    // 1. Replay ops into RGA (for CRDT state)
+    let doc = docRef.current;
+    const sorted = [...initialOps].sort((a, b) => a.clock - b.clock);
+    for (const row of sorted) {
+      if (row.op_type === "snapshot") continue;
+      try {
+        const op: RGAOp =
+          typeof row.payload === "string"
+            ? deserializeOp(row.payload)
+            : deserializeOp(JSON.stringify(row.payload));
+        if (op && (op.type === "insert" || op.type === "delete")) {
+          doc = applyOp(doc, op);
+        }
+      } catch (e) {
+        console.error("Op replay error:", e);
       }
     }
-  }, [editor, initialTiptapContent]);
+    docRef.current = doc;
+    setText(getVisibleText(doc));
+
+    // 2. Load Tiptap content — JSON first, plaintext fallback only
+    if (!editor) return;
+
+    if (!initialMountLoadedRef.current) {
+      initialMountLoadedRef.current = true;
+      if (initialTiptapContent && Object.keys(initialTiptapContent).length > 0) {
+        setTimeout(() => {
+          isRemoteUpdateRef.current = true;
+          editor.commands.setContent(initialTiptapContent, { emitUpdate: false });
+          isRemoteUpdateRef.current = false;
+        }, 0);
+      } else {
+        const plainText = getVisibleText(doc);
+        if (plainText) {
+          setTimeout(() => {
+            isRemoteUpdateRef.current = true;
+            editor.commands.setContent(plainText, { emitUpdate: false });
+            isRemoteUpdateRef.current = false;
+          }, 0);
+        }
+      }
+    }
+  }, [editor, initialOps, initialTiptapContent]);
 
   // ---------------------------------------------------------------------------
   // Handle preview mode transitions
@@ -482,7 +460,7 @@ export default function Editor({
   }, [previewMode, previewVersion, initialTiptapContent]);
 
   // ---------------------------------------------------------------------------
-  // Supabase Realtime — ops + presence + broadcast
+  // Supabase Realtime — ops + presence
   // ---------------------------------------------------------------------------
   useEffect(() => {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -541,62 +519,7 @@ export default function Editor({
       }
     }
 
-    /**
-     * Push the current CRDT state into Tiptap and React state if diverged.
-     */
-    function flushToEditor(): void {
-      if (previewModeRef.current) return;
-      const newText = getVisibleText(docRef.current);
-      const currentEditor = editorRef.current;
-      if (currentEditor) {
-        const curText = currentEditor.getText();
-        if (newText !== curText) {
-          isRemoteUpdateRef.current = true;
-          currentEditor.commands.setContent(newText, { emitUpdate: false });
-          isRemoteUpdateRef.current = false;
-        }
-      }
-      setText(newText);
-    }
-
     channel
-      .on(
-        "broadcast",
-        { event: "doc_rich_update" },
-        ({ payload }) => {
-          if (previewModeRef.current) return;
-          if (!payload || payload.siteId === siteIdRef.current || !payload.json) return;
-          const currentEditor = editorRef.current;
-          if (!currentEditor) return;
-
-          isRemoteUpdateRef.current = true;
-          currentEditor.commands.setContent(payload.json, { emitUpdate: false });
-          isRemoteUpdateRef.current = false;
-
-          const visible = currentEditor.getText();
-          setText(visible);
-        }
-      )
-      .on(
-        "broadcast",
-        { event: "request_sync" },
-        ({ payload }) => {
-          if (!payload || payload.siteId === siteIdRef.current) return;
-          const currentEditor = editorRef.current;
-          if (!currentEditor) return;
-          const json = currentEditor.getJSON() as Record<string, unknown>;
-          channel
-            .send({
-              type: "broadcast",
-              event: "doc_rich_update",
-              payload: {
-                siteId: siteIdRef.current,
-                json,
-              },
-            })
-            .catch(console.error);
-        }
-      )
       .on(
         "postgres_changes",
         {
@@ -634,14 +557,16 @@ export default function Editor({
           const applied = tryApplyOp(incoming);
           if (!applied) {
             pendingOpsRef.current.push(incoming);
-            return; // don't flush — nothing changed yet
+            return;
           }
 
           // Op applied — drain any buffered ops that are now unblocked.
           drainPending();
 
-          // Flush CRDT state.
-          flushToEditor();
+          // DO NOT call editor.commands.setContent() here!
+          // Formatting on this client is untouched.
+          // Update text state for word/character statistics only:
+          setText(getVisibleText(docRef.current));
         }
       )
       .on("presence", { event: "sync" }, () => {
@@ -657,14 +582,6 @@ export default function Editor({
             userName,
             userImage: userImageUrl,
           });
-          // Request latest rich document from any online peer
-          channel
-            .send({
-              type: "broadcast",
-              event: "request_sync",
-              payload: { siteId: siteIdRef.current },
-            })
-            .catch(() => {});
         }
       });
 
