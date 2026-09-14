@@ -13,6 +13,7 @@ interface CollabBarProps {
   presenceUsers: PresenceUser[];
   onHistoryOpen?: () => void;
   role?: "owner" | "collaborator";
+  saveStatus?: "saved" | "saving" | "unsaved";
 }
 
 export default function CollabBar({
@@ -21,6 +22,7 @@ export default function CollabBar({
   presenceUsers,
   onHistoryOpen,
   role = "owner",
+  saveStatus = "saved",
 }: CollabBarProps) {
   const [copied, setCopied] = useState(false);
   const currentTitleRef = useRef<string>(initialTitle || "Untitled");
@@ -64,8 +66,8 @@ export default function CollabBar({
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 flex h-12 items-center justify-between border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] px-6">
-      {/* Left Section: Wordmark + Divider + Inline Editable Title + Shared Badge */}
-      <div className="flex items-center space-x-3 flex-1 max-w-md">
+      {/* Left Section: Wordmark + Divider + Inline Editable Title + Save Status + Shared Badge */}
+      <div className="flex items-center space-x-3 flex-1 max-w-xl">
         <Link
           href="/dashboard"
           className="hover:opacity-80 transition-opacity select-none flex items-center"
@@ -73,16 +75,66 @@ export default function CollabBar({
           <MergoWordmark size="sm" />
         </Link>
         <span className="text-[var(--text-faint)] select-none">/</span>
-        <input
-          type="text"
-          defaultValue={initialTitle || "Untitled"}
-          onBlur={handleTitleBlur}
-          placeholder="Untitled"
-          aria-label="Document title"
-          className="w-full bg-transparent text-sm font-sans text-[var(--text-primary)] outline-none placeholder:text-[var(--text-faint)] border-none p-0 focus:ring-0"
-        />
+        <div className="flex items-center space-x-2 flex-1 max-w-md">
+          <input
+            type="text"
+            defaultValue={initialTitle || "Untitled"}
+            onBlur={handleTitleBlur}
+            placeholder="Untitled"
+            aria-label="Document title"
+            className="w-full bg-transparent text-sm font-sans text-[var(--text-primary)] outline-none placeholder:text-[var(--text-faint)] border-none p-0 focus:ring-0"
+          />
+
+          {/* Cloud Save Status Indicator */}
+          {saveStatus === "saving" ? (
+            <div
+              className="flex items-center space-x-1 text-xs text-[var(--text-muted)] animate-pulse shrink-0"
+              title="Saving changes..."
+            >
+              <svg
+                className="w-3.5 h-3.5 animate-spin text-[#1fb622]"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+              </svg>
+              <span className="hidden sm:inline text-[10px]">Saving...</span>
+            </div>
+          ) : saveStatus === "unsaved" ? (
+            <div
+              className="flex items-center space-x-1 text-xs text-[var(--text-faint)] shrink-0"
+              title="Unsaved changes — autosaves every 10s or press Ctrl+S"
+            >
+              <span className="w-2 h-2 rounded-full bg-amber-500/80 animate-pulse" />
+              <span className="hidden sm:inline text-[10px]">Unsaved</span>
+            </div>
+          ) : (
+            <div
+              className="flex items-center space-x-1 text-xs text-[var(--text-muted)] shrink-0"
+              title="All changes saved to cloud (Autosave active & Ctrl+S ready)"
+            >
+              <svg
+                className="w-3.5 h-3.5 text-[#1fb622]"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
+                <path d="m9 13 2 2 4-4" />
+              </svg>
+              <span className="hidden md:inline text-[10px] text-[var(--text-faint)]">
+                Saved
+              </span>
+            </div>
+          )}
+        </div>
         {role === "collaborator" && (
-          <span className="ml-2 rounded border border-[var(--accent-border)] bg-[var(--accent-bg)] px-2 py-0.5 font-mono text-[11px] text-[var(--accent)] select-none">
+          <span className="ml-2 rounded border border-[var(--accent-border)] bg-[var(--accent-bg)] px-2 py-0.5 font-mono text-[11px] text-[var(--accent)] select-none shrink-0">
             shared
           </span>
         )}

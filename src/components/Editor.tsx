@@ -46,6 +46,8 @@ export interface EditorProps {
   onExitPreview?: () => void;
   onRestoreVersion?: (versionId: string) => Promise<void>;
   historyOpen?: boolean;
+  onSaveStatusChange?: (status: "saved" | "saving" | "unsaved") => void;
+  onNotify?: (msg: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -114,6 +116,8 @@ export default function Editor({
   onExitPreview,
   onRestoreVersion,
   historyOpen = false,
+  onSaveStatusChange,
+  onNotify,
 }: EditorProps) {
   // Generate siteId once at component creation time — never regenerate.
   const siteIdRef = useRef<string>(crypto.randomUUID());
@@ -126,6 +130,7 @@ export default function Editor({
 
   const opCountRef = useRef<number>(0);
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isDirtyRef = useRef<boolean>(false);
 
   // Replay persisted ops exactly once on mount (for plaintext CRDT state).
   const opsReplayedRef = useRef<boolean>(false);
@@ -247,28 +252,91 @@ export default function Editor({
   };
 
   // ---------------------------------------------------------------------------
-  // Persist Tiptap JSON content on every edit (debounced 1000ms)
+  // Immediate Save Function (used by Ctrl+S, Autosave timer, and debounced save)
   // ---------------------------------------------------------------------------
-  const saveTiptapContent = useCallback(() => {
-    if (previewModeRef.current) return;
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-    }
-    saveTimerRef.current = setTimeout(async () => {
+  const saveImmediately = useCallback(
+    async (showFeedback = false) => {
+      if (previewModeRef.current) return;
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+
       const currentEditor = editorRef.current;
       if (!currentEditor) return;
+
+      onSaveStatusChange?.("saving");
       const json = currentEditor.getJSON();
+
       try {
-        await fetch(`/api/documents/${docId}/content`, {
+        const res = await fetch(`/api/documents/${docId}/content`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ tiptap_content: json }),
         });
+
+        if (res.ok) {
+          isDirtyRef.current = false;
+          onSaveStatusChange?.("saved");
+          if (showFeedback) {
+            onNotify?.("All changes saved");
+          }
+        } else {
+          onSaveStatusChange?.("unsaved");
+        }
       } catch (err) {
         console.error("Failed to persist tiptap content:", err);
+        onSaveStatusChange?.("unsaved");
       }
+    },
+    [docId, onNotify, onSaveStatusChange]
+  );
+
+  // ---------------------------------------------------------------------------
+  // Persist Tiptap JSON content on every edit (debounced 1000ms)
+  // ---------------------------------------------------------------------------
+  const saveTiptapContent = useCallback(() => {
+    if (previewModeRef.current) return;
+    isDirtyRef.current = true;
+    onSaveStatusChange?.("unsaved");
+
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+    }
+    saveTimerRef.current = setTimeout(async () => {
+      await saveImmediately(false);
     }, 1000);
-  }, [docId]);
+  }, [saveImmediately, onSaveStatusChange]);
+
+  // ---------------------------------------------------------------------------
+  // 10-Second Recurring Autosave
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (previewModeRef.current) return;
+      if (isDirtyRef.current) {
+        saveImmediately(false);
+      }
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [saveImmediately]);
+
+  // ---------------------------------------------------------------------------
+  // Ctrl+S / Cmd+S Keyboard Shortcut
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        e.stopPropagation();
+        saveImmediately(true);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [saveImmediately]);
 
   useEffect(() => {
     return () => {
