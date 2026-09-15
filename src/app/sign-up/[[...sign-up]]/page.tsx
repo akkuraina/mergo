@@ -19,6 +19,8 @@ export default function SignUpPage() {
       <MergoWordmark size="lg" />
 
       <SignUp
+        fallbackRedirectUrl="/dashboard"
+        forceRedirectUrl="/dashboard"
         appearance={{
           theme: dark,
           variables: {

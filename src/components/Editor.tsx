@@ -8,6 +8,10 @@ import TextAlign from "@tiptap/extension-text-align";
 import { TextStyle } from "@tiptap/extension-text-style";
 import Color from "@tiptap/extension-color";
 import FontFamily from "@tiptap/extension-font-family";
+import Underline from "@tiptap/extension-underline";
+import Highlight from "@tiptap/extension-highlight";
+import Link from "@tiptap/extension-link";
+import Image from "@tiptap/extension-image";
 import { FontSize } from "@/lib/tiptap/FontSize";
 import { HorizontalRuler, VerticalRuler, type DocMargins } from "./DocRuler";
 import {
@@ -303,6 +307,10 @@ export default function Editor({
       Color,
       FontSize,
       FontFamily,
+      Underline,
+      Highlight.configure({ multicolor: true }),
+      Link.configure({ openOnClick: false, autolink: true }),
+      Image.configure({ inline: false, allowBase64: false }),
     ],
     content: initialTiptapContent || undefined,
     editorProps: {

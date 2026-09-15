@@ -49,8 +49,18 @@
 body {
   background-color: var(--bg-base);
   color: var(--text-primary);
-  min-height: 100vh;
+  font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Hide number input spinners globally */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
   margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
 }
 
 *,

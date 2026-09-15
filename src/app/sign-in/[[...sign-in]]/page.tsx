@@ -19,6 +19,8 @@ export default function SignInPage() {
       <MergoWordmark size="lg" />
 
       <SignIn
+        fallbackRedirectUrl="/dashboard"
+        forceRedirectUrl="/dashboard"
         appearance={{
           theme: dark,
           variables: {

@@ -34,7 +34,7 @@ export function HeroCtaGroup() {
           e.currentTarget.style.transform = "translateY(0px)";
         }}
       >
-        Start writing
+        {isSignedIn ? "Go to Dashboard →" : "Start creating"}
       </Link>
       <button
         type="button"
@@ -79,7 +79,7 @@ export function FinalCtaButton() {
         e.currentTarget.style.transform = "translateY(0px)";
       }}
     >
-      Open Mergo →
+      {isSignedIn ? "Go to Dashboard →" : "Open Mergo →"}
     </Link>
   );
 }

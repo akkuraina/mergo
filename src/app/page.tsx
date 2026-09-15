@@ -1,11 +1,17 @@
 import Link from "next/link";
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 import { MergoWordmark } from "@/components/MergoWordmark";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { FeatureCards } from "@/components/FeatureCards";
 import { HeroCtaGroup, FinalCtaButton } from "@/components/LandingCta";
 import "./landing.css";
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  const { userId } = await auth();
+  if (userId) {
+    redirect("/dashboard");
+  }
   return (
     <div className="min-h-screen bg-[var(--bg-base)] text-[var(--text-primary)] flex flex-col relative overflow-hidden">
       {/* Background Grid */}

@@ -27,6 +27,10 @@ export default function RootLayout({
 }>): React.ReactNode {
   return (
     <ClerkProvider
+      signInFallbackRedirectUrl="/dashboard"
+      signUpFallbackRedirectUrl="/dashboard"
+      signInForceRedirectUrl="/dashboard"
+      signUpForceRedirectUrl="/dashboard"
       appearance={{
         theme: dark,
         variables: {
