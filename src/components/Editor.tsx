@@ -166,6 +166,14 @@ export default function Editor({
   // latest instance without being captured in a stale closure.
   const editorRef = useRef<TiptapEditor | null>(null);
 
+  // Keep onPresenceChange in a ref so the Realtime useEffect can use it without
+  // being re-added to the dependency array (which would tear down and recreate
+  // the channel on every parent re-render).
+  const onPresenceChangeRef = useRef(onPresenceChange);
+  useEffect(() => {
+    onPresenceChangeRef.current = onPresenceChange;
+  }, [onPresenceChange]);
+
   // ---------------------------------------------------------------------------
   // Causal pending queue for remote Realtime ops
   // ---------------------------------------------------------------------------
@@ -412,7 +420,9 @@ export default function Editor({
         setTimeout(() => {
           isRemoteUpdateRef.current = true;
           editor.commands.setContent(initialTiptapContent, { emitUpdate: false });
-          isRemoteUpdateRef.current = false;
+          // Reset asynchronously so Tiptap's own onUpdate (which is async)
+          // fires AFTER the guard is cleared, not while it's still true.
+          setTimeout(() => { isRemoteUpdateRef.current = false; }, 0);
         }, 0);
       } else {
         const plainText = getVisibleText(doc);
@@ -420,7 +430,7 @@ export default function Editor({
           setTimeout(() => {
             isRemoteUpdateRef.current = true;
             editor.commands.setContent(plainText, { emitUpdate: false });
-            isRemoteUpdateRef.current = false;
+            setTimeout(() => { isRemoteUpdateRef.current = false; }, 0);
           }, 0);
         }
       }
@@ -446,7 +456,7 @@ export default function Editor({
           emitUpdate: false,
         });
       }
-      isRemoteUpdateRef.current = false;
+      setTimeout(() => { isRemoteUpdateRef.current = false; }, 0);
       setText(previewVersion.snapshot_text);
     } else {
       currentEditor.setEditable(true);
@@ -462,7 +472,7 @@ export default function Editor({
           { emitUpdate: false }
         );
       }
-      isRemoteUpdateRef.current = false;
+      setTimeout(() => { isRemoteUpdateRef.current = false; }, 0);
       setText(currentDocText);
     }
   }, [previewMode, previewVersion, initialTiptapContent]);
@@ -559,6 +569,8 @@ export default function Editor({
 
           if (!incoming || !incoming.type || (incoming as unknown as { type: string }).type === "snapshot") return;
 
+          console.log("Remote op received:", incoming.type);
+
           // Try to apply immediately.  If the predecessor is missing
           // (out-of-order delivery), buffer the op and wait for the gap
           // to be filled by a subsequent delivery.
@@ -571,18 +583,31 @@ export default function Editor({
           // Op applied — drain any buffered ops that are now unblocked.
           drainPending();
 
-          // DO NOT call editor.commands.setContent() here!
-          // Formatting on this client is untouched.
-          // Update text state for word/character statistics only:
-          setText(getVisibleText(docRef.current));
+          const newText = getVisibleText(docRef.current);
+          setText(newText);
+
+          // Update Tiptap so the remote characters appear on screen.
+          // We use setContent with the plain text so character positions converge.
+          // Formatting on this client is intentionally preserved for concurrent
+          // edits — each client's formatting is their own view.
+          const currentEditor = editorRef.current;
+          if (currentEditor && currentEditor.getText() !== newText) {
+            isRemoteUpdateRef.current = true;
+            currentEditor.commands.setContent(newText, { emitUpdate: false });
+            // Reset asynchronously — Tiptap's onUpdate fires after this tick.
+            setTimeout(() => { isRemoteUpdateRef.current = false; }, 0);
+          }
         }
       )
       .on("presence", { event: "sync" }, () => {
         const state = channel.presenceState<PresenceUser>();
         const users = Object.values(state).flat() as PresenceUser[];
-        onPresenceChange(users);
+        // Read from ref — never close over the prop directly so this effect
+        // stays stable with dep array [docId, userId, userName, userImageUrl].
+        onPresenceChangeRef.current(users);
       })
       .subscribe(async (status) => {
+        console.log("Realtime status:", status);
         if (status === "SUBSCRIBED") {
           await channel.track({
             siteId: siteIdRef.current,
@@ -599,7 +624,7 @@ export default function Editor({
       pendingOpsRef.current = [];
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [docId, userId, userName, userImageUrl, onPresenceChange]);
+  }, [docId, userId, userName, userImageUrl]);
 
   // ---------------------------------------------------------------------------
   // Page break calculations + stats — run whenever text changes
