@@ -11,6 +11,7 @@ interface VersionHistoryProps {
   onPreview: (version: VersionRow) => void;
   onRestore: (versionId: string) => Promise<void>;
   currentUserId: string;
+  isOwner?: boolean;
 }
 
 function formatDateGroup(dateString: string): string {
@@ -57,6 +58,7 @@ export default function VersionHistory({
   onPreview,
   onRestore,
   currentUserId,
+  isOwner = false,
 }: VersionHistoryProps) {
   const [versions, setVersions] = useState<VersionRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -345,6 +347,49 @@ export default function VersionHistory({
           ))
         )}
       </div>
+
+      {isOwner && (
+        <div
+          style={{
+            padding: "12px 16px",
+            borderTop: "1px solid var(--border-subtle)",
+            marginTop: "auto",
+          }}
+        >
+          <button
+            onClick={async () => {
+              if (
+                !confirm(
+                  "Reset all edit history and rebuild from current content? This cannot be undone."
+                )
+              )
+                return;
+              const res = await fetch(`/api/documents/${docId}/reset-ops`, {
+                method: "POST",
+              });
+              if (res.ok) {
+                alert("Document reset. Reloading...");
+                window.location.reload();
+              } else {
+                alert("Failed to reset document ops.");
+              }
+            }}
+            style={{
+              width: "100%",
+              padding: "8px",
+              background: "transparent",
+              border: "1px solid #333",
+              borderRadius: "6px",
+              color: "var(--text-faint)",
+              fontSize: "11px",
+              fontFamily: "var(--font-geist-mono)",
+              cursor: "pointer",
+            }}
+          >
+            Reset op history (repair document)
+          </button>
+        </div>
+      )}
     </div>
   );
 }

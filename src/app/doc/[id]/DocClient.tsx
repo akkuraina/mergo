@@ -161,6 +161,7 @@ export default function DocClient({
         }}
         onRestore={handleRestore}
         currentUserId={userId}
+        isOwner={role === "owner"}
       />
 
       {/* Bottom Fixed Sticky Footer (36px) */}

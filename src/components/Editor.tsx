@@ -101,6 +101,129 @@ function computeDiff(oldText: string, newText: string): DiffResult | null {
 }
 
 // ---------------------------------------------------------------------------
+// Diff-reconciliation helpers for CRDT sync without wiping formatting
+// ---------------------------------------------------------------------------
+
+function textPosToPmPos(editor: TiptapEditor, textIndex: number): number | null {
+  const doc = editor.state.doc;
+  const docSize = doc.content.size;
+
+  if (textIndex === 0) return 1; // start of first block content
+
+  let charsSeen = 0;
+
+  for (let i = 0; i < doc.childCount; i++) {
+    const block = doc.child(i);
+    const blockLen = block.textContent.length;
+
+    if (textIndex <= charsSeen + blockLen) {
+      // Target is inside this block
+      const offsetInBlock = textIndex - charsSeen;
+
+      // Walk into the block to find exact position
+      let blockStart = 0;
+      for (let j = 0; j < i; j++) {
+        blockStart += doc.child(j).nodeSize;
+      }
+      // +1 for the opening token of the block node
+      const blockContentStart = blockStart + 1;
+
+      // Walk inline nodes within block
+      let inlineOffset = 0;
+      let pmOffset = blockContentStart;
+
+      for (let k = 0; k < block.childCount; k++) {
+        const inline = block.child(k);
+        if (inline.isText && inline.text) {
+          const inlineLen = inline.text.length;
+          if (offsetInBlock <= inlineOffset + inlineLen) {
+            return pmOffset + (offsetInBlock - inlineOffset);
+          }
+          inlineOffset += inlineLen;
+          pmOffset += inlineLen;
+        } else {
+          pmOffset += inline.nodeSize;
+        }
+      }
+
+      // End of block
+      return Math.min(blockContentStart + blockLen, docSize);
+    }
+
+    charsSeen += blockLen;
+    // +1 for the \n separator between blocks
+    if (i < doc.childCount - 1) charsSeen += 1;
+  }
+
+  return docSize;
+}
+
+function reconcileTiptapWithRGA(editor: TiptapEditor, rgaText: string): void {
+  const pmText = editor.getText({ blockSeparator: "\n" });
+
+  if (pmText === rgaText) return; // already in sync — nothing to do
+
+  // Find the first position where they diverge (from left)
+  let start = 0;
+  while (start < pmText.length && start < rgaText.length && pmText[start] === rgaText[start]) {
+    start++;
+  }
+
+  // Find the last position where they diverge (from right)
+  let pmEnd = pmText.length;
+  let rgaEnd = rgaText.length;
+  while (pmEnd > start && rgaEnd > start && pmText[pmEnd - 1] === rgaText[rgaEnd - 1]) {
+    pmEnd--;
+    rgaEnd--;
+  }
+
+  // pmText[start..pmEnd] needs to become rgaText[start..rgaEnd]
+  const toDelete = pmEnd - start; // chars to remove from ProseMirror
+  const toInsert = rgaText.slice(start, rgaEnd); // chars to insert
+
+  // Convert text index to ProseMirror position using resolve
+  const pmStartPos = textPosToPmPos(editor, start);
+  const pmEndPos = textPosToPmPos(editor, start + toDelete);
+
+  if (pmStartPos === null || pmEndPos === null) return;
+  if (pmStartPos < 0 || pmEndPos > editor.state.doc.content.size) return;
+  if (pmStartPos > pmEndPos) return;
+
+  try {
+    // Build a single transaction: delete the diverged range, then insert correct content
+    const tr = editor.state.tr;
+
+    if (toDelete > 0) {
+      tr.delete(pmStartPos, pmEndPos);
+    }
+
+    if (toInsert.length > 0) {
+      // Split by newlines — each \n becomes a paragraph break
+      const segments = toInsert.split("\n");
+      let insertPos = pmStartPos;
+
+      for (let i = 0; i < segments.length; i++) {
+        if (segments[i].length > 0) {
+          tr.insertText(segments[i], insertPos);
+          insertPos += segments[i].length;
+        }
+        if (i < segments.length - 1) {
+          // Insert paragraph break
+          const $pos = tr.doc.resolve(insertPos);
+          tr.split($pos.pos);
+          insertPos += 2; // ProseMirror split adds 2 positions (close + open node)
+        }
+      }
+    }
+
+    tr.setMeta("isRemoteOp", true); // tag so onUpdate can ignore it
+    editor.view.dispatch(tr);
+  } catch (e) {
+    console.error("reconcileTiptapWithRGA failed:", e, { pmText, rgaText, start, toDelete, toInsert });
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -327,39 +450,63 @@ export default function Editor({
         spellcheck: "true",
       },
     },
-    onUpdate: ({ editor: tiptapEditor }) => {
-      // Guard: don't process remote-triggered updates or preview edits
+    onUpdate: ({ editor: tiptapEditor, transaction }) => {
+      // PRIMARY GATE — check transaction meta first
+      // This is synchronous and cannot race
+      if (transaction.getMeta("isRemoteOp")) return;
+
+      // SECONDARY GATE — belt and suspenders
       if (isRemoteUpdateRef.current || previewModeRef.current) return;
 
-      // 1. Debounced save rich formatting JSON to database
-      saveTiptapContent();
+      editorRef.current = tiptapEditor;
 
-      // 2. Diff text and generate RGA CRDT ops for character sync
-      const newValue = tiptapEditor.getText();
-      const oldValue = getVisibleText(docRef.current);
-      const diff = computeDiff(oldValue, newValue);
+      const newText = tiptapEditor.getText({ blockSeparator: "\n" });
+      const oldText = getVisibleText(docRef.current);
 
-      setText(newValue);
+      // CRITICAL: if texts match, do nothing — prevents phantom op generation
+      if (newText === oldText) return;
 
+      const diff = computeDiff(oldText, newText);
       if (!diff) return;
+
+      const { start, deleted, insertedChars } = diff;
+
+      // Sanity check: the diff should be small (1-5 chars for normal typing)
+      // If it's huge, we're in a feedback loop — bail out
+      if (deleted + insertedChars.length > 50) {
+        console.warn("onUpdate diff too large — likely feedback loop, skipping", {
+          deleted,
+          inserted: insertedChars.length,
+          oldLen: oldText.length,
+          newLen: newText.length,
+        });
+        return;
+      }
+
+      if (insertedChars.includes("\n")) {
+        console.log("Enter key detected — inserting newline at RGA index", start);
+      }
+      if (deleted > 0 && oldText[start] === "\n") {
+        console.log("Backspace at paragraph boundary — deleting newline at RGA index", start);
+      }
 
       let currentDoc = docRef.current;
       const ops: RGAOp[] = [];
 
       // Deletions first — always delete at `start`, not start+i, because each
       // deletion shifts subsequent visible indices down by 1.
-      for (let i = 0; i < diff.deleted; i++) {
-        const [newDoc, op] = localDelete(currentDoc, diff.start);
+      for (let i = 0; i < deleted; i++) {
+        const [newDoc, op] = localDelete(currentDoc, start);
         currentDoc = newDoc;
         ops.push(op);
       }
 
       // Then insertions sequentially at start, start+1, start+2, …
-      for (let i = 0; i < diff.insertedChars.length; i++) {
+      for (let i = 0; i < insertedChars.length; i++) {
         const [newDoc, op] = localInsert(
           currentDoc,
-          diff.start + i,
-          diff.insertedChars[i]
+          start + i,
+          insertedChars[i]
         );
         currentDoc = newDoc;
         ops.push(op);
@@ -367,10 +514,13 @@ export default function Editor({
 
       // Update CRDT state
       docRef.current = currentDoc;
+      setText(getVisibleText(currentDoc));
 
       if (ops.length > 0) {
         persistOps(ops);
       }
+
+      saveTiptapContent();
     },
   });
 
@@ -571,31 +721,31 @@ export default function Editor({
 
           console.log("Remote op received:", incoming.type);
 
-          // Try to apply immediately.  If the predecessor is missing
-          // (out-of-order delivery), buffer the op and wait for the gap
-          // to be filled by a subsequent delivery.
-          const applied = tryApplyOp(incoming);
-          if (!applied) {
-            pendingOpsRef.current.push(incoming);
-            return;
-          }
+          try {
+            // Try to apply immediately.  If the predecessor is missing
+            // (out-of-order delivery), buffer the op and wait for the gap
+            // to be filled by a subsequent delivery.
+            const applied = tryApplyOp(incoming);
+            if (!applied) {
+              pendingOpsRef.current.push(incoming);
+              return;
+            }
 
-          // Op applied — drain any buffered ops that are now unblocked.
-          drainPending();
+            // Op applied — drain any buffered ops that are now unblocked.
+            drainPending();
 
-          const newText = getVisibleText(docRef.current);
-          setText(newText);
+            const newRgaText = getVisibleText(docRef.current);
+            setText(newRgaText);
 
-          // Update Tiptap so the remote characters appear on screen.
-          // We use setContent with the plain text so character positions converge.
-          // Formatting on this client is intentionally preserved for concurrent
-          // edits — each client's formatting is their own view.
-          const currentEditor = editorRef.current;
-          if (currentEditor && currentEditor.getText() !== newText) {
-            isRemoteUpdateRef.current = true;
-            currentEditor.commands.setContent(newText, { emitUpdate: false });
-            // Reset asynchronously — Tiptap's onUpdate fires after this tick.
-            setTimeout(() => { isRemoteUpdateRef.current = false; }, 0);
+            if (editorRef.current) {
+              isRemoteUpdateRef.current = true;
+              reconcileTiptapWithRGA(editorRef.current, newRgaText);
+              setTimeout(() => {
+                isRemoteUpdateRef.current = false;
+              }, 0);
+            }
+          } catch (e) {
+            console.error("Remote op error:", e);
           }
         }
       )
