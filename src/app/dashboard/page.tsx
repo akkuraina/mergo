@@ -13,6 +13,40 @@ type DashboardDoc = Document & {
   role: "owner" | "collaborator";
 };
 
+function getFirstLine(doc: Document): string {
+  if (!doc.tiptap_content || typeof doc.tiptap_content !== "object") {
+    return "No content yet";
+  }
+
+  function walk(node: Record<string, unknown>): string {
+    if (node.type === "text") return (node.text as string) ?? "";
+    const content = (node.content as Record<string, unknown>[]) ?? [];
+    const childText = content.map(walk).join("");
+    const blockTypes = [
+      "paragraph",
+      "heading",
+      "blockquote",
+      "listItem",
+      "bulletList",
+      "orderedList",
+    ];
+    if (blockTypes.includes(node.type as string) && node.type !== "doc") {
+      return childText + "\n";
+    }
+    return childText;
+  }
+
+  const fullText = walk(doc.tiptap_content as Record<string, unknown>).trim();
+  if (!fullText) return "No content yet";
+
+  const firstLine = fullText
+    .split("\n")
+    .map((l) => l.trim())
+    .find((l) => l.length > 0);
+
+  return firstLine || "No content yet";
+}
+
 export default async function DashboardPage(): Promise<React.JSX.Element> {
   const user = await currentUser();
 
@@ -180,8 +214,8 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
                         <h3 className="text-[16px] font-medium text-[var(--text-primary)] truncate">
                           {doc.title || "Untitled"}
                         </h3>
-                        <p className="mt-1 text-xs text-[var(--text-faint)] font-mono truncate">
-                          {doc.id}
+                        <p className="mt-1 text-xs text-[var(--text-muted)] truncate">
+                          {getFirstLine(doc)}
                         </p>
                       </div>
                       <div className="mt-4 sm:mt-6 flex items-center justify-between text-[12px] text-[var(--text-muted)]">
@@ -228,8 +262,8 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
                             })}
                           </span>
                         </div>
-                        <p className="mt-1 text-xs text-[var(--text-faint)] font-mono truncate">
-                          {doc.id}
+                        <p className="mt-1 text-xs text-[var(--text-muted)] truncate">
+                          {getFirstLine(doc)}
                         </p>
                       </div>
 
