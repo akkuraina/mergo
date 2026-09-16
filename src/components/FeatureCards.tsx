@@ -53,7 +53,7 @@ export function FeatureCards() {
   return (
     <div
       id="features"
-      className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-5xl px-6 py-20 mx-auto"
+      className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 w-full max-w-5xl px-6 py-12 md:py-20 mx-auto"
     >
       {features.map((feature, idx) => (
         <div

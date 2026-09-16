@@ -17,10 +17,10 @@ export function HeroCtaGroup() {
   };
 
   return (
-    <div className="hero-cta flex flex-wrap items-center justify-center gap-4">
+    <div className="hero-cta flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 w-full sm:w-auto px-6 sm:px-0">
       <Link
         href={targetUrl}
-        className="inline-flex items-center justify-center px-[28px] py-[12px] rounded-[8px] text-[15px] font-semibold transition-transform duration-150"
+        className="inline-flex items-center justify-center w-full sm:w-auto h-12 px-[28px] rounded-[8px] text-[15px] font-semibold transition-transform duration-150"
         style={{
           background: "#1fb622",
           color: "#060606",
@@ -39,7 +39,7 @@ export function HeroCtaGroup() {
       <button
         type="button"
         onClick={handleScrollToFeatures}
-        className="inline-flex items-center justify-center px-[28px] py-[12px] rounded-[8px] text-[15px] transition-colors duration-150"
+        className="inline-flex items-center justify-center w-full sm:w-auto h-12 px-[28px] rounded-[8px] text-[15px] transition-colors duration-150"
         style={{
           background: "transparent",
           border: "1px solid var(--border-default)",
@@ -65,7 +65,7 @@ export function FinalCtaButton() {
   return (
     <Link
       href={targetUrl}
-      className="inline-flex items-center justify-center px-[28px] py-[12px] rounded-[8px] text-[15px] font-semibold transition-transform duration-150"
+      className="inline-flex items-center justify-center w-full sm:w-auto h-12 px-[28px] rounded-[8px] text-[15px] font-semibold transition-transform duration-150 max-w-xs sm:max-w-none"
       style={{
         background: "#1fb622",
         color: "#060606",

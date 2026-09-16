@@ -25,7 +25,7 @@ export default async function LandingPage() {
         {/* Animated Wordmark Hero */}
         <div className="mb-4">
           <div
-            className="hero-wordmark-wrap select-none text-[64px] sm:text-[80px]"
+            className="hero-wordmark-wrap select-none text-[48px] sm:text-[64px] md:text-[80px]"
             style={{ lineHeight: 1 }}
           >
             <span
@@ -61,7 +61,7 @@ export default async function LandingPage() {
 
         {/* Subtitle */}
         <p
-          className="hero-subtitle mb-8 font-mono text-[18px] text-[var(--text-muted)] tracking-tight"
+          className="hero-subtitle mb-8 font-mono text-[14px] sm:text-[18px] text-[var(--text-muted)] tracking-tight"
           style={{
             fontFamily: "var(--font-geist-mono), monospace",
           }}
@@ -89,9 +89,9 @@ export default async function LandingPage() {
       </section>
 
       {/* Section 3: Final CTA */}
-      <section className="relative z-10 flex flex-col items-center justify-center px-6 py-[120px] text-center bg-[var(--bg-base)] border-t border-[var(--border-subtle)]">
+      <section className="relative z-10 flex flex-col items-center justify-center px-6 py-16 sm:py-[120px] text-center bg-[var(--bg-base)] border-t border-[var(--border-subtle)]">
         <h2
-          className="mb-8 text-[32px] sm:text-[40px] font-bold text-[var(--text-primary)]"
+          className="mb-8 text-[26px] sm:text-[32px] md:text-[40px] font-bold text-[var(--text-primary)]"
           style={{
             fontFamily: 'var(--font-playfair), "Playfair Display", serif',
           }}

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { createClient, type RealtimeChannel } from "@supabase/supabase-js";
+import type { RealtimeChannel } from "@supabase/supabase-js";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useEditor, EditorContent, type Editor as TiptapEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TextAlign from "@tiptap/extension-text-align";
@@ -261,6 +262,14 @@ export default function Editor({
 
   const [text, setText] = useState<string>("");
   const [pageBreaks, setPageBreaks] = useState<number[]>([]);
+  const [isMobile, setIsMobile] = useState<boolean>(false);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   // Interactive Document Margins state
   const [margins, setMargins] = useState<DocMargins>({
@@ -457,7 +466,10 @@ export default function Editor({
     immediatelyRender: false,
     editable: !previewMode,
     extensions: [
-      StarterKit,
+      StarterKit.configure({
+        link: false,
+        underline: false,
+      }),
       TextAlign.configure({ types: ["heading", "paragraph"] }),
       TextStyle,
       Color,
@@ -661,12 +673,7 @@ export default function Editor({
   // Supabase Realtime — ops + presence + tiptap_content formatting
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-    if (!supabaseUrl || !supabaseAnonKey) return;
-
-    const supabase = createClient(supabaseUrl, supabaseAnonKey);
+    const supabase = getSupabaseBrowserClient();
     const channel = supabase.channel(`doc-${docId}`, {
       config: {
         presence: {
@@ -946,8 +953,8 @@ export default function Editor({
         ref={scrollWrapperRef}
         className="editor-scroll-wrapper"
         style={{
-          top: previewMode ? "136px" : "92px",
-          right: historyOpen ? "320px" : "0",
+          top: previewMode ? "136px" : undefined,
+          right: historyOpen && !isMobile ? "320px" : "0",
           transition: "right 200ms ease, top 150ms ease",
         }}
       >
@@ -955,84 +962,96 @@ export default function Editor({
         <div
           className="mx-auto flex flex-col items-center"
           style={{
-            transform: `scale(${zoom / 100})`,
+            transform: isMobile ? "none" : `scale(${zoom / 100})`,
             transformOrigin: "top center",
-            width: "fit-content",
-            marginTop: "12px",
-            paddingBottom: "48px",
+            width: isMobile ? "100%" : "fit-content",
+            marginTop: isMobile ? "0" : "12px",
+            paddingBottom: isMobile ? "24px" : "48px",
           }}
         >
           {/* Top Ruler Row (corner piece + horizontal ruler) */}
-          <div className="flex items-end mb-1 select-none">
-            <div
-              className="w-[22px] h-[22px] border border-r-0 border-b-0 border-[var(--border-subtle)] bg-[var(--bg-elevated)] mr-1 rounded-tl-sm opacity-80"
-              title="Ruler (inches)"
-            />
-            <HorizontalRuler
-              margins={margins}
-              onMarginChange={handleMarginChange}
-              zoom={zoom}
-              onDragStateChange={(dragging, pos, label) => {
-                if (dragging && pos !== null && pos !== undefined) {
-                  setGuideline({ type: "vertical", pos, label });
-                } else {
-                  setGuideline(null);
-                }
-              }}
-            />
-          </div>
-
-          {/* Body Row (Left Vertical Ruler + Document Page Container) */}
-          <div className="flex items-start">
-            {/* Left Vertical Ruler */}
-            <div className="mr-1 select-none">
-              <VerticalRuler
+          {!isMobile && (
+            <div className="flex items-end mb-1 select-none">
+              <div
+                className="w-[22px] h-[22px] border border-r-0 border-b-0 border-[var(--border-subtle)] bg-[var(--bg-elevated)] mr-1 rounded-tl-sm opacity-80"
+                title="Ruler (inches)"
+              />
+              <HorizontalRuler
                 margins={margins}
                 onMarginChange={handleMarginChange}
-                pageHeight={pageContainerRef.current?.scrollHeight || 1056}
                 zoom={zoom}
                 onDragStateChange={(dragging, pos, label) => {
                   if (dragging && pos !== null && pos !== undefined) {
-                    setGuideline({ type: "horizontal", pos, label });
+                    setGuideline({ type: "vertical", pos, label });
                   } else {
                     setGuideline(null);
                   }
                 }}
               />
             </div>
+          )}
+
+          {/* Body Row (Left Vertical Ruler + Document Page Container) */}
+          <div className={`flex items-start ${isMobile ? "w-full" : ""}`}>
+            {/* Left Vertical Ruler */}
+            {!isMobile && (
+              <div className="mr-1 select-none">
+                <VerticalRuler
+                  margins={margins}
+                  onMarginChange={handleMarginChange}
+                  pageHeight={pageContainerRef.current?.scrollHeight || 1056}
+                  zoom={zoom}
+                  onDragStateChange={(dragging, pos, label) => {
+                    if (dragging && pos !== null && pos !== undefined) {
+                      setGuideline({ type: "horizontal", pos, label });
+                    } else {
+                      setGuideline(null);
+                    }
+                  }}
+                />
+              </div>
+            )}
 
             {/* Document Page Container */}
             <div
               ref={pageContainerRef}
               className="page-container !my-0 !mx-0 relative"
               style={{
-                paddingTop: `${margins.top}px`,
-                paddingBottom: `${margins.bottom}px`,
-                paddingLeft: `${margins.left}px`,
-                paddingRight: `${margins.right}px`,
+                width: isMobile ? "100%" : "816px",
+                minHeight: isMobile ? "calc(100vh - 128px - 36px)" : "1056px",
+                background: "var(--page-bg)",
+                padding: isMobile
+                  ? "16px"
+                  : `${margins.top}px ${margins.right}px ${margins.bottom}px ${margins.left}px`,
+                boxSizing: "border-box",
+                position: "relative",
+                boxShadow: isMobile ? "none" : "0 2px 8px rgba(0,0,0,0.4)",
+                borderRadius: isMobile ? "0" : "2px",
+                margin: isMobile ? "0" : "0",
               }}
             >
               {/* Active Margin Drag Guideline */}
-              {guideline && guideline.type === "vertical" && (
+              {!isMobile && guideline && guideline.type === "vertical" && (
                 <div
                   className="absolute top-0 bottom-0 pointer-events-none z-30 border-l border-dashed border-[#1fb622]/80 shadow-[0_0_8px_rgba(31,182,34,0.4)]"
                   style={{ left: `${guideline.pos}px` }}
                 />
               )}
-              {guideline && guideline.type === "horizontal" && (
+              {!isMobile && guideline && guideline.type === "horizontal" && (
                 <div
                   className="absolute left-0 right-0 pointer-events-none z-30 border-t border-dashed border-[#1fb622]/80 shadow-[0_0_8px_rgba(31,182,34,0.4)]"
                   style={{ top: `${guideline.pos}px` }}
                 />
               )}
 
-              {pageBreaks.map((topPos) => (
-                <div
-                  key={topPos}
-                  className="page-break-line"
-                  style={{ top: `${topPos}px` }}
-                />
-              ))}
+              {!isMobile &&
+                pageBreaks.map((topPos) => (
+                  <div
+                    key={topPos}
+                    className="page-break-line"
+                    style={{ top: `${topPos}px` }}
+                  />
+                ))}
               <EditorContent editor={editor} />
             </div>
           </div>

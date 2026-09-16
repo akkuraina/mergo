@@ -30,20 +30,20 @@ export default function EditorFooter({
   }
 
   return (
-    <footer className="fixed bottom-0 left-0 right-0 z-50 flex h-9 items-center justify-between border-t border-[var(--border-subtle)] bg-[var(--bg-surface)] px-6 font-mono text-[11px] text-[var(--text-muted)] select-none">
+    <footer className="editor-footer fixed bottom-0 left-0 right-0 z-50 flex h-9 items-center justify-between border-t border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 md:px-6 font-mono text-[10px] md:text-[11px] text-[var(--text-muted)] select-none">
       {/* Left Section: Document Statistics */}
-      <div className="flex items-center space-x-3">
+      <div className="flex items-center space-x-2 md:space-x-3">
         <span>
           Page {currentPage} of {pages}
         </span>
         <span className="text-[var(--text-faint)]">|</span>
         <span>{words} words</span>
         <span className="text-[var(--text-faint)]">|</span>
-        <span>{chars} characters</span>
+        <span>{chars} chars</span>
       </div>
 
       {/* Right Section: Zoom Controls */}
-      <div className="flex items-center space-x-2">
+      <div className="editor-footer-zoom hidden md:flex items-center space-x-2">
         <button
           type="button"
           onClick={handleZoomOut}

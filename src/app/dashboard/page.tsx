@@ -100,7 +100,7 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
   return (
     <div className="min-h-screen bg-[var(--bg-base)] text-[var(--text-primary)]">
       {/* Top Bar */}
-      <header className="flex h-14 items-center justify-between border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] px-6">
+      <header className="flex h-14 items-center justify-between border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 md:px-6">
         <div className="flex items-center space-x-6">
           <Link
             href="/dashboard"
@@ -109,7 +109,7 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
             <MergoWordmark size="md" />
           </Link>
         </div>
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-3 md:space-x-4">
           <ThemeToggle />
           <UserButton
             appearance={{
@@ -139,52 +139,52 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
               },
             }}
           />
-          <span className="text-sm text-[var(--text-muted)]">
+          <span className="hidden sm:inline text-sm text-[var(--text-muted)]">
             {user.firstName || user.username || "User"}
           </span>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="mx-auto max-w-5xl px-6 py-8">
-        <div className="mb-8 flex items-center justify-between">
+      <main className="mx-auto max-w-5xl px-4 md:px-6 py-6 md:py-8">
+        <div className="mb-6 md:mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <h2 className="text-lg font-medium text-[var(--text-primary)]">
             Your Documents
           </h2>
-          <NewDocButton />
+          <NewDocButton className="w-full sm:w-auto h-11 sm:h-auto" />
         </div>
 
         {isTotalEmpty ? (
-          <div className="flex flex-col items-center justify-center rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-12 text-center">
+          <div className="flex flex-col items-center justify-center rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6 sm:p-12 text-center">
             <p className="mb-4 text-sm text-[var(--text-muted)]">
               No documents created yet.
             </p>
-            <NewDocButton />
+            <NewDocButton className="w-full sm:w-auto h-11 sm:h-auto" />
           </div>
         ) : (
-          <div className="space-y-10">
+          <div className="space-y-8 md:space-y-10">
             {/* Section 1 — My documents */}
             {owned.length > 0 && (
               <div>
                 <h3 className="mb-3 text-xs font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
                   My documents
                 </h3>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {owned.map((doc) => (
                     <Link
                       key={doc.id}
                       href={`/doc/${doc.id}`}
-                      className="group flex flex-col justify-between rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 transition-colors hover:border-[var(--border-default)]"
+                      className="group flex min-h-[80px] flex-col justify-between rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 transition-colors hover:border-[var(--border-default)]"
                     >
                       <div>
-                        <h3 className="font-medium text-[var(--text-primary)] truncate">
+                        <h3 className="text-[16px] font-medium text-[var(--text-primary)] truncate">
                           {doc.title || "Untitled"}
                         </h3>
                         <p className="mt-1 text-xs text-[var(--text-faint)] font-mono truncate">
                           {doc.id}
                         </p>
                       </div>
-                      <div className="mt-6 flex items-center justify-between text-xs text-[var(--text-muted)]">
+                      <div className="mt-4 sm:mt-6 flex items-center justify-between text-[12px] text-[var(--text-muted)]">
                         <span>
                           {new Date(
                             doc.updated_at || doc.created_at
@@ -207,19 +207,19 @@ export default async function DashboardPage(): Promise<React.JSX.Element> {
                 <h3 className="mb-3 text-xs font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
                   Shared with you
                 </h3>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {filteredCollab.map((doc) => (
                     <Link
                       key={doc.id}
                       href={`/doc/${doc.id}`}
-                      className="group flex flex-col justify-between overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] transition-colors hover:border-[var(--border-default)]"
+                      className="group flex min-h-[80px] flex-col justify-between overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] transition-colors hover:border-[var(--border-default)]"
                     >
                       <div className="p-4">
                         <div className="flex items-start justify-between">
-                          <h3 className="font-medium text-[var(--text-primary)] truncate pr-2">
+                          <h3 className="text-[16px] font-medium text-[var(--text-primary)] truncate pr-2">
                             {doc.title || "Untitled"}
                           </h3>
-                          <span className="text-xs text-[var(--text-muted)] whitespace-nowrap">
+                          <span className="text-[12px] text-[var(--text-muted)] whitespace-nowrap">
                             {new Date(
                               doc.updated_at || doc.created_at
                             ).toLocaleDateString(undefined, {

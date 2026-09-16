@@ -13,6 +13,7 @@ export default function SignUpPage() {
         background: "var(--bg-base)",
         flexDirection: "column",
         gap: "32px",
+        padding: "24px 16px",
       }}
     >
       {/* Brand above the Clerk box */}

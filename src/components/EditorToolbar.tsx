@@ -2,12 +2,8 @@
 
 import type { Editor } from "@tiptap/react";
 import { useState, useEffect, useRef } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useParams } from "next/navigation";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 interface EditorToolbarProps {
   editor: Editor | null;
@@ -97,6 +93,7 @@ export default function EditorToolbar({ editor, docId }: EditorToolbarProps) {
     const ext = file.name.split(".").pop();
     const path = `${routeDocId}/${crypto.randomUUID()}.${ext}`;
 
+    const supabase = getSupabaseBrowserClient();
     const { error } = await supabase.storage
       .from("mergo-images")
       .upload(path, file, { upsert: false });
@@ -117,11 +114,13 @@ export default function EditorToolbar({ editor, docId }: EditorToolbarProps) {
   };
 
   const buttonBase =
-    "flex h-7 w-7 items-center justify-center rounded transition-colors text-xs font-mono select-none";
+    "toolbar-btn flex h-7 w-7 items-center justify-center rounded transition-colors text-xs font-mono select-none";
 
   return (
-    <div className="flex h-11 w-full items-center space-x-2 overflow-x-auto border-b border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-4 font-sans text-[var(--text-primary)]">
-      {/* Group 1 — History [↩ undo] [↪ redo] */}
+    <div className="editor-toolbar flex flex-col md:flex-row md:h-11 w-full border-b border-[var(--border-subtle)] bg-[var(--bg-elevated)] font-sans text-[var(--text-primary)] md:items-center md:space-x-2 md:overflow-x-auto md:px-4">
+      {/* Row 1 on mobile, inline on desktop */}
+      <div className="toolbar-row toolbar-row-1 flex items-center space-x-2 shrink-0">
+        {/* Group 1 — History [↩ undo] [↪ redo] */}
       <div className="flex items-center space-x-1">
         <button
           type="button"
@@ -403,8 +402,11 @@ export default function EditorToolbar({ editor, docId }: EditorToolbarProps) {
         </button>
       </div>
 
-      <div className="h-5 w-[1px] bg-[var(--border-default)] shrink-0" />
+      <div className="hidden md:block h-5 w-[1px] bg-[var(--border-default)] shrink-0" />
+    </div>
 
+    {/* Row 2 on mobile, inline on desktop */}
+    <div className="toolbar-row toolbar-row-2 flex items-center space-x-2 shrink-0">
       {/* Group 6 — Colors [A color] [▌ highlight] */}
       <div className="flex items-center space-x-1">
         {/* Text Color */}
@@ -725,6 +727,7 @@ export default function EditorToolbar({ editor, docId }: EditorToolbarProps) {
           </button>
         </div>
       </div>
+    </div>
     </div>
   );
 }

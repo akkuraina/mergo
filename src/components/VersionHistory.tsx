@@ -137,12 +137,21 @@ export default function VersionHistory({
   );
 
   return (
-    <div
-      className={`fixed top-12 right-0 bottom-0 z-40 flex w-80 flex-col border-l border-[var(--border-subtle)] bg-[var(--bg-surface)] font-sans text-[var(--text-primary)] transition-transform duration-200 ease-in-out ${
-        open ? "translate-x-0" : "translate-x-full"
-      }`}
-      style={{ height: "calc(100vh - 48px)" }}
-    >
+    <>
+      {/* Mobile backdrop */}
+      {open && (
+        <div
+          className="fixed inset-0 z-30 bg-black/50 md:hidden"
+          onClick={onClose}
+        />
+      )}
+      <div
+        className={`version-history-panel fixed top-12 right-0 bottom-0 z-40 flex w-80 flex-col border-l border-[var(--border-subtle)] bg-[var(--bg-surface)] font-sans text-[var(--text-primary)] transition-transform duration-200 ease-in-out ${
+          open
+            ? "translate-y-0 md:translate-x-0"
+            : "translate-y-full md:translate-x-full"
+        }`}
+      >
       {/* Panel Header */}
       <div className="border-b border-[var(--border-subtle)] p-4">
         <div className="flex items-center justify-between pb-3">
@@ -391,5 +400,6 @@ export default function VersionHistory({
         </div>
       )}
     </div>
+    </>
   );
 }
