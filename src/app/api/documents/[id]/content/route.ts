@@ -24,6 +24,16 @@ export async function PATCH(
     const body = await request.json();
     const { tiptap_content } = body;
 
+    console.log("PATCH /content called:", {
+      docId: id,
+      hasBody: !!tiptap_content,
+      contentKeys: tiptap_content ? Object.keys(tiptap_content) : [],
+    });
+
+    if (!tiptap_content) {
+      return Response.json({ error: "No content" }, { status: 400 });
+    }
+
     const supabase = createServerSupabaseClient();
 
     const { error } = await supabase

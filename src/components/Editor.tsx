@@ -372,7 +372,7 @@ export default function Editor({
   );
 
   // ---------------------------------------------------------------------------
-  // Persist Tiptap JSON content on every edit (debounced 1000ms)
+  // Persist Tiptap JSON content on every edit (debounced 1500ms)
   // ---------------------------------------------------------------------------
   const saveTiptapContent = useCallback(() => {
     if (previewModeRef.current) return;
@@ -383,9 +383,34 @@ export default function Editor({
       clearTimeout(saveTimerRef.current);
     }
     saveTimerRef.current = setTimeout(async () => {
-      await saveImmediately(false);
-    }, 1000);
-  }, [saveImmediately, onSaveStatusChange]);
+      const currentEditor = editorRef.current;
+      if (!currentEditor) {
+        console.warn("saveTiptapContent: editor not ready");
+        return;
+      }
+      const json = currentEditor.getJSON();
+      console.log("Saving Tiptap JSON:", JSON.stringify(json).slice(0, 200));
+      onSaveStatusChange?.("saving");
+      try {
+        const res = await fetch(`/api/documents/${docId}/content`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tiptap_content: json }),
+        });
+        const body = await res.json();
+        console.log("Tiptap save response:", res.status, body);
+        if (res.ok) {
+          isDirtyRef.current = false;
+          onSaveStatusChange?.("saved");
+        } else {
+          onSaveStatusChange?.("unsaved");
+        }
+      } catch (err) {
+        console.error("Tiptap save fetch error:", err);
+        onSaveStatusChange?.("unsaved");
+      }
+    }, 1500);
+  }, [docId, onSaveStatusChange]);
 
   // ---------------------------------------------------------------------------
   // 10-Second Recurring Autosave
@@ -460,10 +485,13 @@ export default function Editor({
 
       editorRef.current = tiptapEditor;
 
+      // Always save Tiptap JSON — formatting may have changed even if text didn't
+      saveTiptapContent();
+
       const newText = tiptapEditor.getText({ blockSeparator: "\n" });
       const oldText = getVisibleText(docRef.current);
 
-      // CRITICAL: if texts match, do nothing — prevents phantom op generation
+      // Only generate RGA ops if plain text changed
       if (newText === oldText) return;
 
       const diff = computeDiff(oldText, newText);
@@ -474,7 +502,7 @@ export default function Editor({
       // Sanity check: the diff should be small (1-5 chars for normal typing)
       // If it's huge, we're in a feedback loop — bail out
       if (deleted + insertedChars.length > 50) {
-        console.warn("onUpdate diff too large — likely feedback loop, skipping", {
+        console.warn("onUpdate diff too large — skipping RGA op generation", {
           deleted,
           inserted: insertedChars.length,
           oldLen: oldText.length,
@@ -519,8 +547,6 @@ export default function Editor({
       if (ops.length > 0) {
         persistOps(ops);
       }
-
-      saveTiptapContent();
     },
   });
 
@@ -534,7 +560,6 @@ export default function Editor({
     }
   }, [editor, onEditorReady]);
 
-  // ---------------------------------------------------------------------------
   // ---------------------------------------------------------------------------
   // Load initial content into Tiptap on mount (JSON first, plaintext fallback)
   // ---------------------------------------------------------------------------
@@ -561,29 +586,34 @@ export default function Editor({
     docRef.current = doc;
     setText(getVisibleText(doc));
 
-    // 2. Load Tiptap content — JSON first, plaintext fallback only
+    console.log("Loading Tiptap content on mount:", {
+      hasJson: !!initialTiptapContent,
+      jsonKeys: initialTiptapContent ? Object.keys(initialTiptapContent) : [],
+      jsonPreview: JSON.stringify(initialTiptapContent)?.slice(0, 200),
+    });
+
+    // 2. Load Tiptap content with a tick delay to ensure editor is mounted
     if (!editor) return;
 
     if (!initialMountLoadedRef.current) {
       initialMountLoadedRef.current = true;
-      if (initialTiptapContent && Object.keys(initialTiptapContent).length > 0) {
-        setTimeout(() => {
-          isRemoteUpdateRef.current = true;
-          editor.commands.setContent(initialTiptapContent, { emitUpdate: false });
-          // Reset asynchronously so Tiptap's own onUpdate (which is async)
-          // fires AFTER the guard is cleared, not while it's still true.
-          setTimeout(() => { isRemoteUpdateRef.current = false; }, 0);
-        }, 0);
-      } else {
-        const plainText = getVisibleText(doc);
-        if (plainText) {
-          setTimeout(() => {
-            isRemoteUpdateRef.current = true;
-            editor.commands.setContent(plainText, { emitUpdate: false });
-            setTimeout(() => { isRemoteUpdateRef.current = false; }, 0);
-          }, 0);
+      setTimeout(() => {
+        if (!editorRef.current) return;
+        isRemoteUpdateRef.current = true;
+        if (initialTiptapContent && Object.keys(initialTiptapContent).length > 0) {
+          console.log("Setting Tiptap content from JSON");
+          editorRef.current.commands.setContent(initialTiptapContent, { emitUpdate: false });
+        } else {
+          const plainText = getVisibleText(doc);
+          if (plainText) {
+            console.log("Setting Tiptap content from plain text fallback");
+            editorRef.current.commands.setContent(plainText, { emitUpdate: false });
+          }
         }
-      }
+        setTimeout(() => {
+          isRemoteUpdateRef.current = false;
+        }, 0);
+      }, 0);
     }
   }, [editor, initialOps, initialTiptapContent]);
 
@@ -628,7 +658,7 @@ export default function Editor({
   }, [previewMode, previewVersion, initialTiptapContent]);
 
   // ---------------------------------------------------------------------------
-  // Supabase Realtime — ops + presence
+  // Supabase Realtime — ops + presence + tiptap_content formatting
   // ---------------------------------------------------------------------------
   useEffect(() => {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -768,8 +798,45 @@ export default function Editor({
         }
       });
 
+    // Content channel — sync rich formatting updates from remote clients
+    // Note: ensure `ALTER PUBLICATION supabase_realtime ADD TABLE documents;` is executed in Supabase SQL editor
+    const contentChannel = supabase
+      .channel(`doc-content-${docId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "documents",
+          filter: `id=eq.${docId}`,
+        },
+        (payload) => {
+          const newDoc = payload.new as {
+            tiptap_content?: Record<string, unknown>;
+            updated_at?: string;
+          };
+          const newContent = newDoc?.tiptap_content;
+          if (!newContent || !editorRef.current) return;
+
+          const currentJson = JSON.stringify(editorRef.current.getJSON());
+          const incomingJson = JSON.stringify(newContent);
+          if (currentJson === incomingJson) return;
+
+          console.log("Remote formatting update received — applying");
+          isRemoteUpdateRef.current = true;
+          editorRef.current.commands.setContent(newContent, { emitUpdate: false });
+          setTimeout(() => {
+            isRemoteUpdateRef.current = false;
+          }, 0);
+        }
+      )
+      .subscribe((status) => {
+        console.log("Content channel status:", status);
+      });
+
     return () => {
       supabase.removeChannel(channel);
+      supabase.removeChannel(contentChannel);
       channelRef.current = null;
       pendingOpsRef.current = [];
     };

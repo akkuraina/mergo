@@ -56,6 +56,12 @@ export default async function DocPage({
   }
 
   const document = doc as Document;
+  console.log("Document fetched:", {
+    id: document.id,
+    hasTiptapContent: !!document.tiptap_content,
+    tiptapPreview: JSON.stringify(document.tiptap_content)?.slice(0, 200),
+  });
+
   const role: "owner" | "collaborator" =
     document.created_by === userId ? "owner" : "collaborator";
 
